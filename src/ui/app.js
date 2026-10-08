@@ -2,7 +2,7 @@
 
 import { parseHash, navigate } from './router.js';
 import { clearEl, h } from './dom.js';
-import { currentPhase } from '../core/model.js';
+import { currentPhase, PHASE } from '../core/model.js';
 import { homeView } from './views/home.js';
 import { createView } from './views/create.js';
 import { prepareView } from './views/prepare.js';
@@ -19,6 +19,7 @@ function notFoundView({ rootEl }) {
       'div',
       { class: 'empty-state' },
       h('h2', null, 'صفحه پیدا نشد'),
+      h('p', null, 'نشانی وارد‌شده معتبر نیست.'),
       h('a', { class: 'btn btn-primary', href: '#/' }, 'بازگشت به خانه'),
     ),
   );
@@ -48,17 +49,18 @@ export function createApp({ rootEl, store }) {
         destroy = notFoundView(ctx);
       } else {
         const phase = currentPhase(exam, Date.now());
-        if (phase === 'ready') destroy = prepareView({ ...ctx, exam });
-        else if (phase === 'running' || phase === 'expired') destroy = answersheetView({ ...ctx, exam });
-        else if (phase === 'grading') destroy = correctorView({ ...ctx, exam });
+        if (phase === PHASE.READY) destroy = prepareView({ ...ctx, exam });
+        else if (phase === PHASE.RUNNING || phase === PHASE.PAUSED || phase === PHASE.EXPIRED) {
+          destroy = answersheetView({ ...ctx, exam });
+        } else if (phase === PHASE.GRADING) destroy = correctorView({ ...ctx, exam });
         else destroy = resultView({ ...ctx, exam });
       }
     } else destroy = notFoundView(ctx);
 
     try {
-      window.scrollTo(0, 0);
+      if (typeof window.scrollTo === 'function') window.scrollTo({ top: 0, behavior: 'auto' });
     } catch {
-      /* محیط‌های بدون اسکرول */
+      /* محیط‌های بدون اسکرول (مثل تست) */
     }
   }
 
