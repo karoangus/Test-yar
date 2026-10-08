@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateExamInput, createExam, currentPhase, canAnswer, STATUS, CATEGORIES } from '../src/core/model.js';
+import {
+  validateExamInput,
+  validateExamMeta,
+  createExam,
+  currentPhase,
+  canAnswer,
+  isLocked,
+  isLive,
+  STATUS,
+  CATEGORIES,
+} from '../src/core/model.js';
 
 const T0 = 1_700_000_000_000;
 const valid = { name: 'آزمون عربی', questionCount: '20', durationMinutes: '30', category: 'عربی' };
@@ -78,4 +88,47 @@ test('فاز جاری و مجوز پاسخ‌دهی در هر وضعیت', () =>
 
   assert.equal(currentPhase(base, T0), 'ready');
   assert.equal(canAnswer(base, T0), false);
+});
+
+test('فاز «متوقف» و قواعد پاسخ‌دهی در حین توقف', () => {
+  const base = createExam(valid, T0);
+  const paused = { ...base, status: STATUS.IN_PROGRESS, startedAt: T0, pausedAt: T0 + 60_000, pausedTotalMs: 0 };
+  assert.equal(currentPhase(paused, T0 + 10 * 60_000), 'paused');
+  assert.equal(canAnswer(paused, T0 + 10 * 60_000), false);
+  assert.equal(isLocked(paused, T0 + 10 * 60_000), false, 'توقف قفل دائمی نیست');
+  assert.equal(isLive(paused), true);
+
+  // پس از ادامه، فاز اجرا برمی‌گردد
+  const resumed = { ...paused, pausedAt: null, pausedTotalMs: 5 * 60_000 };
+  assert.equal(currentPhase(resumed, T0 + 11 * 60_000), 'running');
+  assert.equal(canAnswer(resumed, T0 + 11 * 60_000), true);
+  // پایان مهلت با احتساب ۵ دقیقه توقف: ۳۰ + ۵ = ۳۵ دقیقه پس از شروع
+  assert.equal(currentPhase(resumed, T0 + 34 * 60_000), 'running');
+  assert.equal(currentPhase(resumed, T0 + 35 * 60_000), 'expired');
+});
+
+test('آزمون «در حال انجام» بدون زمان شروع به‌عنوان آماده در نظر گرفته می‌شود', () => {
+  const base = createExam(valid, T0);
+  const broken = { ...base, status: STATUS.IN_PROGRESS, startedAt: null };
+  assert.equal(currentPhase(broken, T0), 'ready');
+  assert.equal(canAnswer(broken, T0), false);
+  assert.equal(isLive(broken), false);
+});
+
+test('اعتبارسنجی متادیتا برای ویرایش نام و دسته‌بندی', () => {
+  assert.equal(validateExamMeta({ name: 'نام تازه', category: 'تاریخ' }).ok, true);
+  const bad = validateExamMeta({ name: '   ', category: 'تاریخ' });
+  assert.equal(bad.ok, false);
+  assert.ok(bad.errors.name);
+  assert.equal(validateExamMeta({ name: 'خ', category: 'ندارد' }).ok, false);
+  const longName = 'ا'.repeat(81);
+  assert.equal(validateExamMeta({ name: longName, category: 'تاریخ' }).ok, false);
+  assert.equal(validateExamInput({ ...valid, name: longName }).ok, false);
+});
+
+test('آزمون جدید فیلدهای توقف را با مقدار پاک شروع می‌کند', () => {
+  const exam = createExam(valid, T0);
+  assert.equal(exam.pausedAt, null);
+  assert.equal(exam.pausedTotalMs, 0);
+  assert.equal(exam.pauseCount, 0);
 });

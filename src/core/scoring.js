@@ -1,18 +1,53 @@
 // ── منطق خالص تصحیح و محاسبات آزمون ────────────────────────────────────────
 // بدون هیچ وابستگی به رابط کاربری یا ذخیره‌سازی؛ ورودی/خروجی ساده.
 
+// گزینه‌ها عددی نمایش داده می‌شوند: ۱ · ۲ · ۳ · ۴ (نه الف/ب/ج/د)
 export const OPTIONS = Object.freeze([
-  { id: 'A', label: 'الف' },
-  { id: 'B', label: 'ب' },
-  { id: 'C', label: 'ج' },
-  { id: 'D', label: 'د' },
+  { id: 'A', label: '۱', number: 1 },
+  { id: 'B', label: '۲', number: 2 },
+  { id: 'C', label: '۳', number: 3 },
+  { id: 'D', label: '۴', number: 4 },
 ]);
 
 export const OPTION_IDS = Object.freeze(OPTIONS.map((o) => o.id));
 
+const BY_ID = new Map(OPTIONS.map((o) => [o.id, o]));
+
+// نگاشت میان‌بُرهای کیبورد (ارقام فارسی/لاتین و جایگزین‌های شناخته‌شده) به شناسهٔ گزینه
+const KEY_TO_OPTION = new Map([
+  ['1', 'A'],
+  ['2', 'B'],
+  ['3', 'C'],
+  ['4', 'D'],
+  ['۱', 'A'],
+  ['۲', 'B'],
+  ['۳', 'C'],
+  ['۴', 'D'],
+  ['a', 'A'],
+  ['b', 'B'],
+  ['c', 'C'],
+  ['d', 'D'],
+  ['a', 'A'],
+]);
+
 export function optionLabel(id) {
-  const found = OPTIONS.find((o) => o.id === id);
-  return found ? found.label : '—';
+  return BY_ID.get(id)?.label ?? '—';
+}
+
+export function optionNumber(id) {
+  return BY_ID.get(id)?.number ?? null;
+}
+
+/** برچسب کامل برای فناوری‌های کمکی: «گزینه ۲» */
+export function optionTitle(id) {
+  const label = optionLabel(id);
+  return label === '—' ? 'گزینه' : `گزینه ${label}`;
+}
+
+/** تبدیل کلید فشرده‌شدهٔ کیبورد به شناسهٔ گزینه (در غیر این صورت null) */
+export function optionFromKey(key) {
+  if (key == null) return null;
+  return KEY_TO_OPTION.get(String(key).trim().toLowerCase()) ?? null;
 }
 
 export const QUESTION_STATUS = Object.freeze({
@@ -45,6 +80,15 @@ export function findMissingKeys(total, key) {
     if (!isValidOption(key == null ? undefined : key[i])) missing.push(i);
   }
   return missing;
+}
+
+/** شمارهٔ سوال‌های بدون پاسخ کاربر (برای فهرست «نزده‌ها») */
+export function findUnanswered(total, answers) {
+  const list = [];
+  for (let i = 0; i < total; i += 1) {
+    if (!isValidOption(answers == null ? undefined : answers[i])) list.push(i);
+  }
+  return list;
 }
 
 /**

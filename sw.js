@@ -1,5 +1,5 @@
 /* سرویس‌ورکر تست‌یار — قابلیت نصب و کارکرد آفلاین */
-const VERSION = 'testyar-v1';
+const VERSION = 'testyar-v2';
 const CORE = [
   './',
   './index.html',
@@ -22,6 +22,8 @@ const CORE = [
   './src/core/storage.js',
   './src/core/store.js',
   './src/ui/dom.js',
+  './src/ui/theme.js',
+  './src/ui/keyboard.js',
   './src/ui/components.js',
   './src/ui/router.js',
   './src/ui/pwa.js',
@@ -35,11 +37,20 @@ const CORE = [
   './src/ui/views/history.js',
 ];
 
+function putInCache(request, response) {
+  if (!response || !response.ok || response.type === 'opaque') return response;
+  const copy = response.clone();
+  caches.open(VERSION).then((cache) => cache.put(request, copy)).catch(() => {});
+  return response;
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(VERSION)
       .then((cache) => cache.addAll(CORE))
+      // اگر یکی از فایل‌ها نبود، نصب کل سرویس‌ورکر شکست نمی‌خورد
+      .catch(() => Promise.allSettled(CORE.map((url) => cache.add(url))))
       .then(() => self.skipWaiting()),
   );
 });
@@ -53,39 +64,45 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // ناوبری: شبکه اول با fallback به نسخهٔ کش‌شدهٔ ایندکس
-  if (request.mode === 'navigate') {
+  const isCode = /\.(?:js|mjs|css)$/.test(url.pathname);
+  const isDocument = request.mode === 'navigate' || url.pathname.endsWith('.html');
+
+  // کد و صفحات: شبکه اول (تا هیچ‌وقت نسخهٔ قدیمی گیر نکنیم)، fallback کش
+  if (isDocument || isCode) {
     event.respondWith(
       fetch(request)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(VERSION).then((c) => c.put('./index.html', copy));
-          return res;
-        })
-        .catch(() => caches.match('./index.html')),
+        .then((res) => putInCache(request, res))
+        .catch(async () => {
+          const cached = await caches.match(request);
+          if (cached) return cached;
+          return caches.match('./index.html');
+        }),
     );
     return;
   }
 
-  // بقیه: cache اول با به‌روزرسانی در پس‌زمینه
+  // فونت/آیکن/سایر دارایی‌ها: کش اول با به‌روزرسانی در پس‌زمینه
   event.respondWith(
     caches.match(request).then((cached) => {
-      const fetched = fetch(request)
-        .then((res) => {
-          if (res && res.ok) {
-            const copy = res.clone();
-            caches.open(VERSION).then((c) => c.put(request, copy));
-          }
-          return res;
-        })
-        .catch(() => cached);
-      return cached || fetched;
+      if (cached) {
+        fetch(request)
+          .then((res) => putInCache(request, res))
+          .catch(() => {});
+        return cached;
+      }
+      return fetch(request)
+        .then((res) => putInCache(request, res))
+        .catch(() => caches.match('./index.html'));
     }),
   );
 });

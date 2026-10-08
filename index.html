@@ -5,8 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#1e3a8a" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="description" content="تست‌یار — ساخت، برگزاری و تصحیح آزمون‌های تستی چهارگزینه‌ای با تایمر دقیق" />
-    <title>تست‌یار</title>
+    <meta name="description" content="تست‌یار — ساخت، برگزاری و تصحیح آزمون‌های تستی چهارگزینه‌ای با تایمر دقیق و قابلیت توقف" />
+    <title>تست‌یار | آزمون‌ساز و تصحیح‌کننده</title>
+    <script>
+      // اعمال تم پیش از نخستین رنگ‌آمیزی تا صفحه پرش رنگ نداشته باشد
+      (function () {
+        try {
+          var stored = localStorage.getItem('testyar.theme.v1');
+          var dark =
+            stored === 'dark' ||
+            ((stored == null || stored === 'auto') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+          if (dark) document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0b1220');
+        } catch (e) {
+          /* بدون تم هم برنامه کار می‌کند */
+        }
+      })();
+    </script>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
     <link rel="apple-touch-icon" href="./assets/icons/apple-touch-180.png" />

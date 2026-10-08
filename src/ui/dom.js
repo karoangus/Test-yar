@@ -2,7 +2,7 @@
 
 /**
  * ساخت عنصر با props و فرزندان.
- * props پشتیبانی‌شده: class, dataset, attrs, text و هر رویداد onX.
+ * props پشتیبانی‌شده: class, dataset, attrs, text, style و هر رویداد onX.
  */
 export function h(tag, props = null, ...children) {
   const el = document.createElement(tag);
@@ -14,6 +14,8 @@ export function h(tag, props = null, ...children) {
         for (const [dk, dv] of Object.entries(value)) el.dataset[dk] = dv;
       } else if (key === 'attrs') {
         for (const [ak, av] of Object.entries(value)) el.setAttribute(ak, av);
+      } else if (key === 'style' && typeof value === 'object') {
+        for (const [sk, sv] of Object.entries(value)) el.style.setProperty(sk, String(sv));
       } else if (key === 'text') el.textContent = value;
       else if (key.startsWith('on') && typeof value === 'function') {
         el.addEventListener(key.slice(2).toLowerCase(), value);
@@ -37,6 +39,11 @@ export function clearEl(el) {
   return el;
 }
 
+/** متن فقط برای صفحه‌خوان‌ها */
+export function srOnly(text) {
+  return h('span', { class: 'sr-only' }, text);
+}
+
 /** پیمایش به یک عنصر با اسکرول نرم */
 export function scrollToEl(el) {
   if (el && typeof el.scrollIntoView === 'function') {
@@ -47,3 +54,4 @@ export function scrollToEl(el) {
     }
   }
 }
+

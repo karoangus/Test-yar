@@ -1,6 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeResults, findMissingKeys, gradeQuestion } from '../src/core/scoring.js';
+import {
+  computeResults,
+  findMissingKeys,
+  findUnanswered,
+  gradeQuestion,
+  isValidOption,
+  optionFromKey,
+  optionLabel,
+  optionNumber,
+  optionTitle,
+  OPTIONS,
+} from '../src/core/scoring.js';
 import { formatPercent, roundTo } from '../src/core/format.js';
 
 /** ساخت پاسخ/کلید برای سناریوی ۱: ۱۴ درست، ۴ غلط، ۲ نزده */
@@ -97,4 +108,33 @@ test('کلید ناقص شناسایی و محاسبه رد می‌شود', () =
   assert.deepEqual(findMissingKeys(3, { 0: 'A', 1: 'X', 2: 'C' }), [1]);
   assert.throws(() => computeResults({ total: 3, answers: {}, key: { 0: 'A' } }));
   assert.throws(() => computeResults({ total: 0, answers: {}, key: {} }));
+});
+
+test('گزینه‌ها عددی هستند: ۱ · ۲ · ۳ · ۴ (نه الف/ب/ج/د)', () => {
+  assert.deepEqual(OPTIONS.map((o) => o.label), ['۱', '۲', '۳', '۴']);
+  assert.deepEqual(OPTIONS.map((o) => o.id), ['A', 'B', 'C', 'D']);
+  assert.equal(optionLabel('A'), '۱');
+  assert.equal(optionLabel('D'), '۴');
+  assert.equal(optionLabel('X'), '—');
+  assert.equal(optionNumber('C'), 3);
+  assert.equal(optionTitle('B'), 'گزینه ۲');
+  for (const opt of OPTIONS) {
+    assert.equal(isValidOption(opt.id), true);
+  }
+  assert.equal(isValidOption('الف'), false);
+});
+
+test('میان‌بُر کیبورد ارقام فارسی و لاتین را به گزینه تبدیل می‌کند', () => {
+  assert.equal(optionFromKey('1'), 'A');
+  assert.equal(optionFromKey('۴'), 'D');
+  assert.equal(optionFromKey('d'), 'D');
+  assert.equal(optionFromKey('9'), null);
+  assert.equal(optionFromKey(''), null);
+  assert.equal(optionFromKey(null), null);
+});
+
+test('فهرست سوال‌های بی‌پاسخ', () => {
+  assert.deepEqual(findUnanswered(4, { 0: 'A', 2: 'C' }), [1, 3]);
+  assert.deepEqual(findUnanswered(3, { 0: 'X' }), [0, 1, 2]);
+  assert.deepEqual(findUnanswered(2, {}), [0, 1]);
 });
