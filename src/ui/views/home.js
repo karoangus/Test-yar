@@ -2,8 +2,17 @@
 
 import { h, clearEl } from '../dom.js';
 import { statusBadge, icon, splitBar, onTick, toast } from '../components.js';
-import { formatNumber, formatDuration, formatPercent, formatClock, formatSeconds, formatRelativeTime } from '../../core/format.js';
-import { STATUS, PHASE, currentPhase } from '../../core/model.js';
+import {
+  formatNumber,
+  formatDuration,
+  formatPercent,
+  formatClock,
+  formatSeconds,
+  formatRelativeTime,
+  formatRange,
+  formatAnswerCount,
+} from '../../core/format.js';
+import { STATUS, PHASE, currentPhase, startNumberOf } from '../../core/model.js';
 import { remainingSeconds, pauseDurationMs } from '../../core/timer.js';
 import { canInstall, onInstallAvailable, promptInstall } from '../pwa.js';
 import { toggleTheme, getResolvedTheme, onThemeChange } from '../theme.js';
@@ -177,7 +186,11 @@ export function homeView({ rootEl, store, navigate }) {
         h('div', null, h('span', { class: 'running-hero-label' }, 'آزمون در جریان'), h('h3', { class: 'running-hero-title' }, exam.name)),
         h('span', { class: 'sheet-timer', dataset: { liveTimer: '1', examId: exam.id } }, '⏱ --:--'),
       ),
-      h('p', { class: 'running-hero-sub' }, `${formatNumber(answered)} از ${formatNumber(exam.questionCount)} پاسخ داده شده`),
+      h(
+        'p',
+        { class: 'running-hero-sub' },
+        `${formatAnswerCount(answered, exam.questionCount, startNumberOf(exam))} پاسخ داده شده`,
+      ),
       h('p', { class: 'running-hero-note', dataset: { pauseNote: '1' }, hidden: true }),
       h(
         'div',
@@ -214,9 +227,12 @@ export function homeView({ rootEl, store, navigate }) {
 
   function examCard(exam) {
     const graded = exam.status === STATUS.GRADED && exam.result;
+    const start = startNumberOf(exam);
     const meta = h(
       'div',
       { class: 'card-meta' },
+      start > 1 ? h('span', null, `شمارهٔ ${formatRange(start, exam.questionCount)}`) : null,
+      start > 1 ? h('span', { class: 'dot' }, '·') : null,
       h('span', null, `${formatNumber(exam.questionCount)} سوال`),
       h('span', { class: 'dot' }, '·'),
       h('span', null, formatDuration(exam.durationMinutes)),

@@ -8,8 +8,10 @@ import {
   canAnswer,
   isLocked,
   isLive,
+  startNumberOf,
   STATUS,
   CATEGORIES,
+  MAX_START_NUMBER,
 } from '../src/core/model.js';
 
 const T0 = 1_700_000_000_000;
@@ -18,7 +20,13 @@ const valid = { name: 'آزمون عربی', questionCount: '20', durationMinute
 test('ورودی معتبر پذیرفته و نرمال می‌شود', () => {
   const res = validateExamInput(valid);
   assert.equal(res.ok, true);
-  assert.deepEqual(res.values, { name: 'آزمون عربی', questionCount: 20, durationMinutes: 30, category: 'عربی' });
+  assert.deepEqual(res.values, {
+    name: 'آزمون عربی',
+    questionCount: 20,
+    durationMinutes: 30,
+    category: 'عربی',
+    startNumber: 1,
+  });
 });
 
 test('نام خالی رد می‌شود', () => {
@@ -131,4 +139,44 @@ test('آزمون جدید فیلدهای توقف را با مقدار پاک ش
   assert.equal(exam.pausedAt, null);
   assert.equal(exam.pausedTotalMs, 0);
   assert.equal(exam.pauseCount, 0);
+});
+
+// ── شمارهٔ اولین سوال ───────────────────────────────────────────────────────
+
+test('شمارهٔ اولین سوال: پیش‌فرض ۱، فقط عدد صحیح مثبت و با سقف مشخص', () => {
+  assert.equal(validateExamInput(valid).values.startNumber, 1);
+  assert.equal(validateExamInput({ ...valid, startNumber: '' }).values.startNumber, 1);
+  assert.equal(validateExamInput({ ...valid, startNumber: '۵۲' }).values.startNumber, 52);
+  assert.equal(validateExamInput({ ...valid, startNumber: 1 }).values.startNumber, 1);
+  assert.equal(validateExamInput({ ...valid, startNumber: String(MAX_START_NUMBER) }).values.startNumber, MAX_START_NUMBER);
+
+  for (const bad of ['0', '-5', 'abc', '2.5', String(MAX_START_NUMBER + 1)]) {
+    const res = validateExamInput({ ...valid, startNumber: bad });
+    assert.equal(res.ok, false, `باید رد شود: ${bad}`);
+    assert.ok(res.errors.startNumber);
+  }
+});
+
+test('آزمون ساخته‌شده شمارهٔ شروع را نگه می‌دارد و شمارهٔ نمایشی می‌دهد', () => {
+  const exam = createExam({ ...valid, questionCount: 11, startNumber: '52' }, T0);
+  assert.equal(exam.startNumber, 52);
+  assert.equal(startNumberOf(exam), 52);
+  // دادهٔ قدیمی بدون startNumber → شماره‌ها از ۱ شروع می‌شوند
+  assert.equal(startNumberOf({ questionCount: 3 }), 1);
+  assert.equal(startNumberOf({ startNumber: 0 }), 1);
+  assert.equal(startNumberOf(null), 1);
+});
+
+test('ویرایش متادیتا: شمارهٔ شروع اختیاری است و فقط وقتی فرستاده شود تغییر می‌کند', () => {
+  const keep = validateExamMeta({ name: 'آزمون', category: 'عربی' });
+  assert.equal(keep.ok, true);
+  assert.equal('startNumber' in keep.values, false, 'اگر فرستاده نشود دست‌نخورده می‌ماند');
+
+  const change = validateExamMeta({ name: 'آزمون', category: 'عربی', startNumber: '۱۰۱' });
+  assert.equal(change.ok, true);
+  assert.equal(change.values.startNumber, 101);
+
+  const bad = validateExamMeta({ name: 'آزمون', category: 'عربی', startNumber: '۰' });
+  assert.equal(bad.ok, false);
+  assert.ok(bad.errors.startNumber);
 });

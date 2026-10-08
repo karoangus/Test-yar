@@ -10,6 +10,11 @@ import {
   normalizeDigits,
   roundTo,
   toFa,
+  normalizeStartNumber,
+  questionNumber,
+  formatQuestionNo,
+  formatRange,
+  formatAnswerCount,
 } from '../src/core/format.js';
 
 const T0 = 1_700_000_000_000;
@@ -69,4 +74,38 @@ test('گرد کردن بدون خطای اعشاری', () => {
   assert.equal(roundTo(0.1 + 0.2, 2), 0.3);
   assert.equal(roundTo(-63.335, 2), -63.34);
   assert.ok(Number.isNaN(roundTo(NaN)));
+});
+
+// ── شماره‌گذاری سوال‌ها از شمارهٔ دلخواه (قابلیت «شمارهٔ اولین سوال») ──────────
+
+test('نرمال‌سازی شمارهٔ شروع: خالی/نامعتبر → ۱ و ارقام فارسی پذیرفته می‌شود', () => {
+  assert.equal(normalizeStartNumber(''), 1);
+  assert.equal(normalizeStartNumber(undefined), 1);
+  assert.equal(normalizeStartNumber('abc'), 1);
+  assert.equal(normalizeStartNumber('0'), 1);
+  assert.equal(normalizeStartNumber('-4'), 1);
+  assert.equal(normalizeStartNumber('52'), 52);
+  assert.equal(normalizeStartNumber('۵۲'), 52);
+  assert.equal(normalizeStartNumber(52), 52);
+});
+
+test('شمارهٔ نمایشی سوال‌ها = شمارهٔ شروع + ایندکس', () => {
+  assert.equal(questionNumber(0, 1), 1);
+  assert.equal(questionNumber(9, 1), 10);
+  assert.equal(questionNumber(0, 52), 52);
+  assert.equal(questionNumber(10, 52), 62);
+  assert.equal(formatQuestionNo(10, 52), 'سوال ۶۲');
+});
+
+test('بازهٔ شمارهٔ سوال‌ها درست ساخته می‌شود', () => {
+  assert.equal(formatRange(1, 10), '۱ تا ۱۰');
+  assert.equal(formatRange(52, 11), '۵۲ تا ۶۲');
+  assert.equal(formatRange(52, 1), '۵۲ تا ۵۲');
+  assert.equal(formatRange(undefined, 3), '۱ تا ۳');
+});
+
+test('شمارندهٔ پاسخ‌ها در آزمون‌های با شمارهٔ شروع دلخواه بازه را هم نشان می‌دهد', () => {
+  assert.equal(formatAnswerCount(0, 10, 1), '۰ از ۱۰');
+  assert.equal(formatAnswerCount(18, 20, 1), '۱۸ از ۲۰');
+  assert.equal(formatAnswerCount(3, 11, 52), '۳ از ۱۱ (سوال ۵۲ تا ۶۲)');
 });

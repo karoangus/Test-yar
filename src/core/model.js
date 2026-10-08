@@ -61,6 +61,9 @@ export const PHASE_LABEL = Object.freeze({
 export const MAX_QUESTIONS = 500;
 export const MAX_DURATION_MINUTES = 24 * 60;
 export const MAX_NAME_LENGTH = 80;
+/** بیشترین شمارهٔ شروع سوال (مثلاً آزمون‌های ۱۲۰ سوالی از سوال ۱۰۱) */
+export const MAX_START_NUMBER = 99_999;
+export const DEFAULT_START_NUMBER = 1;
 
 export function generateId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -87,8 +90,20 @@ function validateName(raw) {
 }
 
 /**
+ * اعتبارسنجی «شمارهٔ اولین سوال».
+ * خالی بودن یعنی ۱ (سازگاری کامل با آزمون‌های قبلی).
+ */
+function validateStartNumber(raw) {
+  if (raw == null || String(raw).trim() === '') return { value: DEFAULT_START_NUMBER };
+  const n = toPositiveInt(raw);
+  if (!Number.isFinite(n)) return { error: 'شمارهٔ اولین سوال باید یک عدد صحیح مثبت باشد.' };
+  if (n > MAX_START_NUMBER) return { error: `شمارهٔ اولین سوال حداکثر ${MAX_START_NUMBER} است.` };
+  return { value: n };
+}
+
+/**
  * اعتبارسنجی ورودی ساخت آزمون.
- * خروجی: { ok, values?, errors: { name?, questionCount?, duration?, category? } }
+ * خروجی: { ok, values?, errors: { name?, questionCount?, duration?, category?, startNumber? } }
  */
 export function validateExamInput(input) {
   const errors = {};
@@ -115,19 +130,32 @@ export function validateExamInput(input) {
     errors.category = 'یک دسته‌بندی معتبر انتخاب کنید.';
   }
 
+  const startCheck = validateStartNumber(input?.startNumber);
+  if (startCheck.error) errors.startNumber = startCheck.error;
+
   if (Object.keys(errors).length > 0) return { ok: false, errors };
-  return { ok: true, values: { name: nameCheck.value, questionCount, durationMinutes, category } };
+  return {
+    ok: true,
+    values: { name: nameCheck.value, questionCount, durationMinutes, category, startNumber: startCheck.value },
+  };
 }
 
-/** validateExamInput فقط با اجازهٔ تغییر متادیتا (نام و دسته‌بندی) */
+/** validateExamInput فقط با اجازهٔ تغییر متادیتا (نام، دسته‌بندی و شمارهٔ شروع) */
 export function validateExamMeta(input) {
   const errors = {};
   const nameCheck = validateName(input?.name);
   if (nameCheck.error) errors.name = nameCheck.error;
   const category = String(input?.category ?? '');
   if (!CATEGORIES.includes(category)) errors.category = 'یک دسته‌بندی معتبر انتخاب کنید.';
+  // شمارهٔ شروع اختیاری است؛ اگر فرستاده نشود مقدار فعلی آزمون دست‌نخورده می‌ماند
+  const hasStartNumber = input?.startNumber != null && String(input.startNumber).trim() !== '';
+  const startCheck = hasStartNumber ? validateStartNumber(input.startNumber) : { value: undefined };
+  if (startCheck.error) errors.startNumber = startCheck.error;
   if (Object.keys(errors).length > 0) return { ok: false, errors };
-  return { ok: true, values: { name: nameCheck.value, category } };
+  return {
+    ok: true,
+    values: { name: nameCheck.value, category, ...(hasStartNumber ? { startNumber: startCheck.value } : {}) },
+  };
 }
 
 /** ساخت آبجکت آزمون جدید با وضعیت «ساخته‌شده» */
@@ -139,6 +167,7 @@ export function createExam(input, now = Date.now()) {
     category: values.category,
     questionCount: values.questionCount,
     durationMinutes: values.durationMinutes,
+    startNumber: values.startNumber,
     status: STATUS.CREATED,
     createdAt: now,
     startedAt: null,
@@ -190,4 +219,14 @@ export function isLocked(exam, now = Date.now()) {
 /** آیا آزمون در حال برگزاری است (چه در حال اجرا، چه متوقف)؟ */
 export function isLive(exam) {
   return exam != null && exam.status === STATUS.IN_PROGRESS && exam.startedAt != null;
+}
+
+// ── شماره‌گذاری سوال‌ها ──────────────────────────────────────────────────────
+// آزمون می‌تواند از سوال شمارهٔ دلخواهی شروع شود (مثلاً سوال‌های ۵۲ تا ۶۲ کتاب).
+// `startNumber` در آزمون ذخیره می‌شود و شمارهٔ نمایشی هر سوال = startNumber + ایندکس.
+
+/** شمارهٔ شروع آزمون به صورت عدد صحیح (پیش‌فرض ۱ برای دادهٔ قدیمی) */
+export function startNumberOf(exam) {
+  const n = Number(exam?.startNumber);
+  return Number.isInteger(n) && n > 0 ? n : DEFAULT_START_NUMBER;
 }

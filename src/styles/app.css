@@ -101,6 +101,14 @@ body {
   padding-bottom: calc(96px + env(safe-area-inset-bottom));
 }
 
+/*
+ * انیمیشن ورود فقط روی «شفافیت» است و عمداً هیچ transform روی .view نمی‌گذارد.
+ * دلیل: عنصرِ دارای transform (حتی ماتریس همانیِ باقی‌مانده از انیمیشن با
+ * animation-fill-mode: both) «حاوی‌کنندهٔ» عناصر position: fixed می‌شود؛ پس
+ * نوار پایین (`.sheet-footer`)، اورلی توقف/پایان زمان و دکمهٔ ساخت آزمون به
+ * انتهای کل سند پرت می‌شدند: سوال‌های آخر زیر نوار پنهان می‌شد و دکمه‌های
+ * «پایان آزمون»/«اتمام تصحیح» و پیام «زمان آزمون تمام شد» دیده نمی‌شدند.
+ */
 .view {
   animation: view-in var(--speed) ease both;
 }
@@ -108,11 +116,9 @@ body {
 @keyframes view-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: none;
   }
 }
 
@@ -614,6 +620,20 @@ body {
   font-size: 0.78rem;
 }
 
+/* پیش‌نمایش زندهٔ بازهٔ شمارهٔ سوال‌ها در فرم ساخت آزمون */
+.range-preview {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--primary-deep);
+  background: var(--primary-soft);
+  border-radius: 999px;
+  padding: 3px 12px;
+}
+
 .input {
   font: inherit;
   color: var(--text);
@@ -868,6 +888,29 @@ body {
   color: var(--muted);
   font-size: 0.85rem;
   font-weight: 700;
+  white-space: nowrap;
+}
+
+/* دکمه‌های نوار پایین در یک خط بمانند (برچسب دو خطی، نوار را کلفت می‌کرد) */
+.sheet-footer .btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .sheet-footer {
+    gap: 6px;
+    padding-inline: 10px;
+  }
+
+  .sheet-footer .btn {
+    padding-inline: 10px;
+    font-size: 0.85rem;
+  }
+
+  .sheet-footer > span,
+  .sheet-count {
+    font-size: 0.78rem;
+  }
 }
 
 .sheet-footer-actions {

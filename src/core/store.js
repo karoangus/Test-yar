@@ -238,6 +238,7 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
         }
         exam.name = check.values.name;
         exam.category = check.values.category;
+        if (check.values.startNumber != null) exam.startNumber = check.values.startNumber;
       });
       return clone(updated);
     },
@@ -252,6 +253,7 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
           category: source.category,
           questionCount: source.questionCount,
           durationMinutes: source.durationMinutes,
+          startNumber: source.startNumber,
         },
         now(),
       );

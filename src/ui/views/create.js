@@ -2,12 +2,13 @@
 
 import { h, clearEl } from '../dom.js';
 import { icon, toast } from '../components.js';
-import { CATEGORIES, MAX_QUESTIONS } from '../../core/model.js';
+import { CATEGORIES, MAX_QUESTIONS, MAX_START_NUMBER } from '../../core/model.js';
 import { DomainError } from '../../core/store.js';
-import { toFa, formatNumber } from '../../core/format.js';
+import { toFa, formatNumber, formatRange, normalizeStartNumber, normalizeDigits } from '../../core/format.js';
 
 const DURATION_PRESETS = [10, 20, 30, 45, 60, 90];
 const COUNT_PRESETS = [10, 20, 30, 50, 100];
+const START_PRESETS = [1, 51, 101, 201];
 
 export function createView({ rootEl, store, navigate }) {
   const container = h('div', { class: 'view' });
@@ -26,6 +27,14 @@ export function createView({ rootEl, store, navigate }) {
     id: 'f-count',
     inputmode: 'numeric',
     placeholder: 'مثلاً: 20',
+    attrs: { autocomplete: 'off' },
+  });
+  const startInput = h('input', {
+    class: 'input',
+    type: 'text',
+    id: 'f-start',
+    inputmode: 'numeric',
+    placeholder: 'مثلاً: ۵۲ — خالی یعنی از سوال ۱',
     attrs: { autocomplete: 'off' },
   });
   const durationInput = h('input', {
@@ -76,7 +85,25 @@ export function createView({ rootEl, store, navigate }) {
   }
 
   const countPresets = presetChips(COUNT_PRESETS, countInput, (v) => `${toFa(v)} سوال`);
+  const startPresets = presetChips(START_PRESETS, startInput, (v) => `از ${toFa(v)}`);
   const durationPresets = presetChips(DURATION_PRESETS, durationInput, (v) => `${toFa(v)} دقیقه`);
+
+  /**
+   * پیش‌نمایش زندهٔ شمارهٔ سوال‌ها؛ همان چیزی که در پاسخ‌برگ و تصحیح‌کننده می‌بینید.
+   * این تنها راهی است که کاربر می‌فهمد آزمونش از سوال ۵۲ تا ۶۲ است، نه ۱ تا ۱۰.
+   */
+  const rangePreview = h('span', { class: 'range-preview', dataset: { rangePreview: '1' } });
+  function refreshRangePreview() {
+    const count = Number(normalizeDigits(countInput.value));
+    const start = normalizeStartNumber(startInput.value);
+    rangePreview.textContent =
+      Number.isInteger(count) && count > 0
+        ? `شمارهٔ سوال‌ها: ${formatRange(start, count)}`
+        : 'تعداد سوال‌ها را وارد کنید تا بازهٔ شماره‌ها را ببینید.';
+  }
+  countInput.addEventListener('input', refreshRangePreview);
+  startInput.addEventListener('input', refreshRangePreview);
+  refreshRangePreview();
 
   const form = h(
     'form',
@@ -96,6 +123,20 @@ export function createView({ rootEl, store, navigate }) {
       countInput,
       h('span', { class: 'field-hint' }, `حداکثر ${formatNumber(MAX_QUESTIONS)} سوال`),
       fieldError('questionCount'),
+    ),
+    h(
+      'div',
+      { class: 'field' },
+      h('label', { for: 'f-start' }, 'شمارهٔ اولین سوال'),
+      startPresets.wrap,
+      startInput,
+      h(
+        'span',
+        { class: 'field-hint' },
+        `اگر آزمون شما از سوال ۱ شروع نمی‌شود شمارهٔ سوال اول را بنویسید (مثلاً ۵۲)؛ حداکثر ${formatNumber(MAX_START_NUMBER)}.`,
+      ),
+      rangePreview,
+      fieldError('startNumber'),
     ),
     h(
       'div',
@@ -121,6 +162,7 @@ export function createView({ rootEl, store, navigate }) {
       const exam = store.addExam({
         name: nameInput.value,
         questionCount: countInput.value,
+        startNumber: startInput.value,
         durationMinutes: durationInput.value,
         category: categorySelect.value,
       });
@@ -142,10 +184,16 @@ export function createView({ rootEl, store, navigate }) {
       errEls[key].textContent = message;
       errEls[key].hidden = message.length === 0;
     }
-    const order = ['name', 'questionCount', 'duration', 'category'];
+    const order = ['name', 'questionCount', 'startNumber', 'duration', 'category'];
     const firstKey = order.find((k) => next[k]);
     if (firstKey) {
-      const inputs = { name: nameInput, questionCount: countInput, duration: durationInput, category: categorySelect };
+      const inputs = {
+        name: nameInput,
+        questionCount: countInput,
+        startNumber: startInput,
+        duration: durationInput,
+        category: categorySelect,
+      };
       inputs[firstKey].focus();
     }
   }

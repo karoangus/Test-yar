@@ -503,6 +503,125 @@ test('سناریو ۱۴: آمار زمان و توقف‌ها در صفحهٔ ن
   assert.equal(rStore.all().length, 2);
 });
 
+test('سناریو ۱۵: آزمون از سوال ۵۲ تا ۶۲ (شمارهٔ اولین سوال) در همهٔ صفحه‌ها', async () => {
+  app.destroy();
+  const sStore = freshStore();
+  app = createApp({ rootEl: document.getElementById('app'), store: sStore });
+
+  // ── فرم ساخت: پیش‌نمایش زندهٔ بازهٔ شماره‌ها ──
+  W.location.hash = '#/new';
+  await settle();
+  assert.equal($('#f-start').value, '', 'شمارهٔ اولین سوال خالی است تا تایپ کردن ساده باشد');
+  assert.match(text('[data-range-preview]'), /تعداد سوال/, 'پیش از واردکردن تعداد، پیش‌نمایش راهنما نشان داده می‌شود');
+
+  $('#f-name').value = 'عربی درس ۵';
+  $('#f-count').value = '۱۱'; // ارقام فارسی هم باید پیش‌نمایش را درست نشان دهد
+  $('#f-duration').value = '30';
+  $('#f-start').value = '52';
+  $('#f-start').dispatchEvent(new W.Event('input', { bubbles: true }));
+  await settle();
+  assert.match(text('[data-range-preview]'), /۵۲ تا ۶۲/, 'پیش‌نمایش «۵۲ تا ۶۲» را نشان می‌دهد');
+
+  // خالی گذاشتن شمارهٔ شروع هم یعنی «از سوال ۱»
+  $('#f-start').value = '';
+  $('#f-start').dispatchEvent(new W.Event('input', { bubbles: true }));
+  await settle();
+  assert.match(text('[data-range-preview]'), /۱ تا ۱۱/, 'فیلد خالی یعنی از سوال ۱');
+  $('#f-start').value = '52';
+  $('#f-start').dispatchEvent(new W.Event('input', { bubbles: true }));
+
+  $('.form-card').dispatchEvent(new W.Event('submit', { bubbles: true, cancelable: true }));
+  await settle();
+  await settle();
+
+  const exam = sStore.all()[0];
+  assert.equal(exam.startNumber, 52);
+  assert.equal(exam.questionCount, 11);
+  assert.match(text('.info-grid'), /۵۲ تا ۶۲/, 'صفحهٔ آماده‌سازی بازه را نشان می‌دهد');
+
+  // ── ویرایش شمارهٔ شروع پیش از شروع آزمون ──
+  click(buttonWith('.prepare-card .btn', 'ویرایش'));
+  await settle();
+  const editStart = $('#e-start');
+  assert.equal(editStart.value, '52', 'شمارهٔ فعلی در فرم ویرایش');
+  editStart.value = '62';
+  $('.form-card').dispatchEvent(new W.Event('submit', { bubbles: true, cancelable: true }));
+  await settle();
+  assert.equal(sStore.get(exam.id).startNumber, 62, 'شمارهٔ شروع ویرایش شد');
+  assert.match(text('.info-grid'), /۶۲ تا ۷۲/);
+
+  // برگرداندن به ۵۲ برای ادامهٔ سناریو
+  click(buttonWith('.prepare-card .btn', 'ویرایش'));
+  await settle();
+  $('#e-start').value = '52';
+  $('.form-card').dispatchEvent(new W.Event('submit', { bubbles: true, cancelable: true }));
+  await settle();
+
+  // ── پاسخ‌برگ: سوال‌ها ۵۲ تا ۶۲ ──
+  click(buttonWith('.prepare-card .btn', 'شروع آزمون'));
+  await settle();
+  click(buttonWith('.modal-actions .btn', 'شروع آزمون'));
+  await settle();
+  await settle();
+
+  const cards = $$('.question-card');
+  assert.equal(cards.length, 11);
+  assert.equal(cards[0].querySelector('.q-title').textContent.trim(), 'سوال ۵۲');
+  assert.equal(cards[10].querySelector('.q-title').textContent.trim(), 'سوال ۶۲', 'آخرین سوال ناقص نیست');
+  assert.equal(
+    cards[10].querySelectorAll('.option-btn').length,
+    4,
+    'هر چهار گزینهٔ آخرین سوال رندر می‌شود',
+  );
+  const chips = $$('.nav-chip').map((c) => c.textContent.trim());
+  assert.deepEqual(chips, ['۵۲', '۵۳', '۵۴', '۵۵', '۵۶', '۵۷', '۵۸', '۵۹', '۶۰', '۶۱', '۶۲']);
+  assert.match(text('.qnav summary'), /۵۲ تا ۶۲/, 'ناوبری بازه را نشان می‌دهد');
+  assert.match(text('[data-progress-label]'), /۰ از ۱۱ \(سوال ۵۲ تا ۶۲\)/, 'شمارندهٔ سربرگ با بازه');
+  assert.equal(text('[data-count]'), 'پاسخ‌داده: ۰ از ۱۱', 'نوار پایین کوتاه می‌ماند تا دکمه‌ها جا شوند');
+
+  // پاسخ به یک سوال → شمارنده و چیپ‌ها هم‌زمان به‌روز می‌شوند
+  click(cards[10].querySelector('.option-btn[data-opt="B"]'));
+  await settle();
+  assert.match(text('[data-progress-label]'), /۱ از ۱۱ \(سوال ۵۲ تا ۶۲\)/);
+  assert.equal(text('[data-count]'), 'پاسخ‌داده: ۱ از ۱۱');
+  assert.ok($$('.nav-chip')[10].classList.contains('chip-answered'), 'چیپ آخرین سوال سبز می‌شود');
+
+  // ── تصحیح‌کننده ──
+  W.location.hash = '#/history';
+  await settle();
+  assert.equal(sStore.get(exam.id).status, 'in_progress');
+  sStore.endExamManually(exam.id);
+  W.location.hash = `#/exam/${exam.id}`;
+  await settle();
+  await settle();
+  assert.match(text('.sheet-name'), /تصحیح‌کننده/);
+  assert.match(text('.sheet-sub'), /شمارهٔ ۵۲ تا ۶۲/);
+  assert.equal($$('.question-card[data-key-q]')[0].querySelector('.q-title').textContent.trim(), 'سوال ۵۲');
+  assert.equal($$('.question-card[data-key-q]')[10].querySelector('.q-title').textContent.trim(), 'سوال ۶۲');
+
+  // تلاش برای اتمام تصحیح با کلید ناقص → چیپ‌های شمارهٔ واقعی
+  click(buttonWith('.sheet-footer .btn', 'اتمام تصحیح'));
+  await settle();
+  assert.match(text('.warning-banner'), /۵۲/, 'چیپ سوال بدون کلید با شمارهٔ واقعی');
+  sStore.setKeyEntry(exam.id, 10, 'B');
+  for (let i = 0; i < 10; i += 1) sStore.setKeyEntry(exam.id, i, i === 3 ? 'A' : 'C');
+
+  // ── کارنامه: شماره‌های واقعی در مرور پاسخ‌ها ──
+  const graded = sStore.finishGrading(exam.id);
+  assert.equal(graded.ok, true);
+  W.location.hash = `#/exam/${exam.id}/result`;
+  await settle();
+  assert.match(text('.result-hero'), /۵۲ تا ۶۲/, 'بازه در کارنامه');
+  const reviewIndexes = $$('.review-index').map((el) => el.textContent.trim());
+  assert.deepEqual(reviewIndexes, ['۵۲', '۵۳', '۵۴', '۵۵', '۵۶', '۵۷', '۵۸', '۵۹', '۶۰', '۶۱', '۶۲']);
+  assert.match(text('.review-list'), /۵۲/, 'مرور پاسخ‌ها با شمارهٔ واقعی');
+
+  // ── تاریخچه: بازهٔ شماره‌ها روی کارت ──
+  W.location.hash = '#/history';
+  await settle();
+  assert.match(text('.history-card'), /۵۲ تا ۶۲/);
+});
+
 test('پاک‌سازی: بازگرداندن Date.now و نابودی اپ', () => {
   app.destroy();
   Date.now = realNow;
