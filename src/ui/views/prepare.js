@@ -2,9 +2,9 @@
 
 import { h, clearEl } from '../dom.js';
 import { icon, confirmDialog, toast } from '../components.js';
-import { formatNumber, formatDuration } from '../../core/format.js';
+import { formatNumber, formatDuration, formatRange, normalizeStartNumber } from '../../core/format.js';
 import { OPTIONS } from '../../core/scoring.js';
-import { CATEGORIES, STATUS } from '../../core/model.js';
+import { CATEGORIES, STATUS, startNumberOf, MAX_START_NUMBER } from '../../core/model.js';
 import { DomainError } from '../../core/store.js';
 
 export function prepareView({ rootEl, store, navigate, exam }) {
@@ -50,6 +50,7 @@ export function prepareView({ rootEl, store, navigate, exam }) {
         'div',
         { class: 'info-grid' },
         infoRow('تعداد سوالات', `${formatNumber(current.questionCount)} سوال`),
+        infoRow('شمارهٔ سوال‌ها', `${formatRange(startNumberOf(current), current.questionCount)}`),
         infoRow('زمان آزمون', formatDuration(current.durationMinutes)),
         infoRow('گزینه‌ها', OPTIONS.map((o) => o.label).join(' · ')),
         infoRow('توقف تایمر', 'فعال — زمان در حین توقف مصرف نمی‌شود'),
@@ -67,7 +68,7 @@ export function prepareView({ rootEl, store, navigate, exam }) {
           },
         },
         icon('edit', 16),
-        editing ? ' بستن ویرایش' : ' ویرایش نام و دسته‌بندی',
+        editing ? ' بستن ویرایش' : ' ویرایش نام، دسته‌بندی و شمارهٔ سوال‌ها',
       ),
     );
 
@@ -85,10 +86,24 @@ export function prepareView({ rootEl, store, navigate, exam }) {
   }
 
   function editCard(current) {
-    const nameInput = h('input', { class: 'input', type: 'text', value: current.name, attrs: { maxlength: '80' } });
+    const nameInput = h('input', {
+      class: 'input',
+      type: 'text',
+      id: 'e-name',
+      value: current.name,
+      attrs: { maxlength: '80' },
+    });
+    const startInput = h('input', {
+      class: 'input',
+      type: 'text',
+      id: 'e-start',
+      inputmode: 'numeric',
+      value: String(startNumberOf(current)),
+      attrs: { autocomplete: 'off' },
+    });
     const categorySelect = h(
       'select',
-      { class: 'input select' },
+      { class: 'input select', id: 'e-category' },
       ...CATEGORIES.map((c) => h('option', { value: c, selected: c === current.category }, c)),
     );
     const errorEl = h('p', { class: 'field-error', hidden: true });
@@ -100,7 +115,11 @@ export function prepareView({ rootEl, store, navigate, exam }) {
         onSubmit: (e) => {
           e.preventDefault();
           try {
-            store.updateExamMeta(current.id, { name: nameInput.value, category: categorySelect.value });
+            store.updateExamMeta(current.id, {
+              name: nameInput.value,
+              category: categorySelect.value,
+              startNumber: startInput.value,
+            });
             editing = false;
             toast('اطلاعات آزمون به‌روزرسانی شد.', 'success');
             render();
@@ -114,8 +133,19 @@ export function prepareView({ rootEl, store, navigate, exam }) {
           }
         },
       },
-      h('div', { class: 'field' }, h('label', null, 'نام آزمون'), nameInput),
-      h('div', { class: 'field' }, h('label', null, 'دسته‌بندی'), categorySelect),
+      h('div', { class: 'field' }, h('label', { for: 'e-name' }, 'نام آزمون'), nameInput),
+      h('div', { class: 'field' }, h('label', { for: 'e-category' }, 'دسته‌بندی'), categorySelect),
+      h(
+        'div',
+        { class: 'field' },
+        h('label', { for: 'e-start' }, 'شمارهٔ اولین سوال'),
+        startInput,
+        h(
+          'span',
+          { class: 'field-hint' },
+          `شمارهٔ سوال‌ها: ${formatRange(normalizeStartNumber(startInput.value), current.questionCount)} (حداکثر ${formatNumber(MAX_START_NUMBER)})`,
+        ),
+      ),
       errorEl,
       h(
         'div',

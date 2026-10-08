@@ -376,3 +376,36 @@ test('آزمون فعال و آزمون‌های متوقف‌شده قابل ش
   assert.equal(store.pausedExams().length, 0);
   assert.equal(store.get(b.id).pauseCount, 1);
 });
+
+// ── شمارهٔ اولین سوال در اکشن‌های مخزن ──────────────────────────────────────
+
+test('ساخت، تکرار و ویرایش آزمون شمارهٔ شروع را درست مدیریت می‌کند', () => {
+  const { store } = makeStore({ value: T0 });
+  const exam = store.addExam({ ...valid, questionCount: 11, startNumber: 52 });
+  assert.equal(exam.startNumber, 52);
+
+  const copy = store.duplicateExam(exam.id);
+  assert.equal(copy.startNumber, 52, 'تکرار آزمون همان شمارهٔ شروع را می‌گیرد');
+
+  const updated = store.updateExamMeta(exam.id, { name: 'آزمون ویرایش‌شده', category: 'عربی', startNumber: 71 });
+  assert.equal(updated.startNumber, 71);
+
+  const kept = store.updateExamMeta(exam.id, { name: 'آزمون ویرایش‌شده ۲', category: 'عربی' });
+  assert.equal(kept.startNumber, 71, 'اگر شمارهٔ شروع فرستاده نشود تغییر نمی‌کند');
+
+  assert.throws(
+    () => store.updateExamMeta(exam.id, { name: 'x', category: 'عربی', startNumber: '۰' }),
+    DomainError,
+  );
+  assert.equal(store.get(exam.id).startNumber, 71, 'ویرایش ناموفق چیزی را خراب نمی‌کند');
+});
+
+test('آزمون بدون شمارهٔ شروع (دادهٔ قدیمی) با شمارهٔ ۱ خوانده می‌شود', () => {
+  const backend = memBackend();
+  backend.setItem(
+    STORAGE_KEY,
+    JSON.stringify([{ id: 'old-1', name: 'قدیمی', category: 'عربی', questionCount: 5, durationMinutes: 10, status: 'created', createdAt: 1 }]),
+  );
+  const store = createAppStore({ storage: backend, now: () => T0 });
+  assert.equal(store.get('old-1').startNumber, 1);
+});

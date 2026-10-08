@@ -1,12 +1,12 @@
 // ── لایهٔ ذخیره‌سازی پایدار (localStorage با fallback ایمن) ──────────────────
 // شامل بازسازی ایمن دادهٔ خراب، اعتبارسنجی نتیجهٔ ذخیره‌شده و پشتیبان‌گیری JSON.
 
-import { STATUS, CATEGORIES } from './model.js';
+import { STATUS, CATEGORIES, MAX_START_NUMBER, DEFAULT_START_NUMBER } from './model.js';
 import { isValidOption, findMissingKeys, computeResults, QUESTION_STATUS } from './scoring.js';
 
 export const STORAGE_KEY = 'testyar.exams.v1';
 export const BACKUP_FORMAT = 'testyar.backup';
-export const BACKUP_VERSION = 2;
+export const BACKUP_VERSION = 3;
 
 /** آداپتور ذخیره‌سازی: ابتدا localStorage، در صورت عدم دسترسی حافظهٔ موقت */
 export function createStorageAdapter(backend) {
@@ -156,6 +156,10 @@ export function sanitizeExam(raw) {
   if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return null;
 
   const category = CATEGORIES.includes(raw.category) ? raw.category : 'سایر';
+  // شمارهٔ شروع سوال‌ها (دادهٔ نسخه‌های قبلی معتبر است و ۱ فرض می‌شود)
+  const rawStart = Number(raw.startNumber);
+  const startNumber =
+    Number.isInteger(rawStart) && rawStart > 0 && rawStart <= MAX_START_NUMBER ? rawStart : DEFAULT_START_NUMBER;
   const answers = sanitizeAnswerMap(raw.answers, questionCount);
   const key = sanitizeAnswerMap(raw.key, questionCount);
   const result = sanitizeResult(raw.result, questionCount, answers, key);
@@ -190,6 +194,7 @@ export function sanitizeExam(raw) {
     category,
     questionCount,
     durationMinutes,
+    startNumber,
     status,
     createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : Date.now(),
     startedAt,

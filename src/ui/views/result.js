@@ -12,6 +12,8 @@ import {
   formatScoreOutOf20,
 } from '../../core/format.js';
 import { optionLabel, QUESTION_STATUS } from '../../core/scoring.js';
+import { startNumberOf } from '../../core/model.js';
+import { formatRange } from '../../core/format.js';
 
 const REVIEW_FILTERS = [
   { value: 'all', label: 'همه' },
@@ -67,11 +69,12 @@ export function resultView({ rootEl, store, navigate, exam }) {
         h('span', { class: 'stat-label' }, label),
       );
 
+    const start = startNumberOf(current);
     const reviewRows = result.perQuestion.map((q) =>
       h(
         'li',
         { class: 'review-row', dataset: { status: q.status } },
-        h('span', { class: 'review-index' }, formatNumber(q.index + 1)),
+        h('span', { class: 'review-index' }, formatNumber(start + q.index)),
         h(
           'span',
           { class: 'review-answers' },
@@ -83,7 +86,7 @@ export function resultView({ rootEl, store, navigate, exam }) {
 
     const unansweredChips = result.perQuestion
       .filter((q) => q.status === QUESTION_STATUS.UNANSWERED)
-      .map((q) => h('span', { class: 'nav-chip chip-unanswered' }, formatNumber(q.index + 1)));
+      .map((q) => h('span', { class: 'nav-chip chip-unanswered' }, formatNumber(start + q.index)));
 
     const durationMs = Number(current.result.durationMinutes ?? current.durationMinutes) * 60_000;
     const activeMs = Number.isFinite(current.result.activeElapsedMs)
@@ -120,6 +123,9 @@ export function resultView({ rootEl, store, navigate, exam }) {
       'section',
       { class: 'card result-hero' },
       h('h3', { class: 'result-name' }, current.name),
+      start > 1
+        ? h('p', { class: 'hint' }, `شمارهٔ سوال‌ها: ${formatRange(start, result.total)}`)
+        : null,
       h(
         'div',
         { class: 'card-meta' },

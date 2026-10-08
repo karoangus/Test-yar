@@ -146,3 +146,22 @@ test('آداپتور حافظه‌ای در نبود localStorage کار می‌
   adapter.removeItem(STORAGE_KEY);
   assert.equal(adapter.getItem(STORAGE_KEY), null);
 });
+
+// ── شمارهٔ شروع سوال‌ها در دادهٔ ذخیره‌شده ────────────────────────────────────
+
+test('شمارهٔ شروع سالم می‌ماند و دادهٔ قدیمی/خراب با ۱ ترمیم می‌شود', () => {
+  assert.equal(sanitizeExam({ ...base, startNumber: 52 }).startNumber, 52);
+  assert.equal(sanitizeExam(base).startNumber, 1, 'دادهٔ نسخهٔ قبل startNumber ندارد');
+  assert.equal(sanitizeExam({ ...base, startNumber: 0 }).startNumber, 1);
+  assert.equal(sanitizeExam({ ...base, startNumber: -3 }).startNumber, 1);
+  assert.equal(sanitizeExam({ ...base, startNumber: 'x' }).startNumber, 1);
+  assert.equal(sanitizeExam({ ...base, startNumber: 1.5 }).startNumber, 1);
+  assert.equal(sanitizeExam({ ...base, startNumber: 10 ** 9 }).startNumber, 1, 'بیش از سقف پذیرفته نمی‌شود');
+});
+
+test('پشتیبان‌گیری و بازگردانی شمارهٔ شروع را حفظ می‌کند', () => {
+  const text = serializeBackup([{ ...base, startNumber: 62 }]);
+  const parsed = parseBackup(text);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.exams[0].startNumber, 62);
+});

@@ -3,8 +3,8 @@
 import { h, clearEl, scrollToEl, srOnly } from '../dom.js';
 import { toast, icon, kbd, segmented } from '../components.js';
 import { OPTIONS, optionLabel, optionTitle, findMissingKeys } from '../../core/scoring.js';
-import { STATUS } from '../../core/model.js';
-import { formatNumber } from '../../core/format.js';
+import { STATUS, startNumberOf } from '../../core/model.js';
+import { formatNumber, formatQuestionNo, formatRange, formatAnswerCount } from '../../core/format.js';
 import { attachQuestionShortcuts } from '../keyboard.js';
 
 export function correctorView({ rootEl, store, navigate, exam }) {
@@ -28,6 +28,7 @@ export function correctorView({ rootEl, store, navigate, exam }) {
     }
 
     const missing = findMissingKeys(current.questionCount, current.key);
+    const start = startNumberOf(current);
     const keyCountEl = h('span', { dataset: { keyCount: '1' } }, '');
 
     // ── هشدار کلید ناقص ──
@@ -46,7 +47,7 @@ export function correctorView({ rootEl, store, navigate, exam }) {
             h('button', {
               class: 'nav-chip chip-missing',
               type: 'button',
-              text: formatNumber(i + 1),
+              text: formatNumber(start + i),
               onClick: () => scrollToEl(container.querySelector(`.question-card[data-key-q="${i}"]`)),
             }),
           ),
@@ -67,7 +68,11 @@ export function correctorView({ rootEl, store, navigate, exam }) {
       h(
         'div',
         { class: 'sheet-top-row' },
-        h('span', { class: 'sheet-sub' }, 'پاسخ صحیح هر سوال را انتخاب کنید؛ پاسخ دانش‌آموز فقط نمایش داده می‌شود.'),
+        h(
+          'span',
+          { class: 'sheet-sub' },
+          `کلید صحیح هر سوال را انتخاب کنید · شمارهٔ ${formatRange(start, current.questionCount)}`,
+        ),
         h('span', { class: 'sheet-shortcuts' }, kbd('۱'), kbd('۲'), kbd('۳'), kbd('۴'), srOnly('میان‌بُرهای کیبورد برای انتخاب کلید')),
       ),
     );
@@ -117,7 +122,7 @@ export function correctorView({ rootEl, store, navigate, exam }) {
         h('div', { class: 'empty-state' }, icon('check', 32), h('h2', null, 'کلید همهٔ سوال‌ها وارد شده است')),
       );
     } else {
-      for (const i of indexes) list.append(keyCard(current, i));
+      for (const i of indexes) list.append(keyCard(current, i, start));
     }
 
     const finishBtn = h(
@@ -151,7 +156,7 @@ export function correctorView({ rootEl, store, navigate, exam }) {
       const fresh = store.get(exam.id);
       if (!fresh) return;
       const entered = fresh.questionCount - findMissingKeys(fresh.questionCount, fresh.key).length;
-      keyCountEl.textContent = `کلید واردشده: ${formatNumber(entered)} از ${formatNumber(fresh.questionCount)}`;
+      keyCountEl.textContent = `کلید واردشده: ${formatAnswerCount(entered, fresh.questionCount, startNumberOf(fresh))}`;
     }
 
     function selectKey(index, optionId) {
@@ -180,7 +185,7 @@ export function correctorView({ rootEl, store, navigate, exam }) {
       refreshKeyCount();
     }
 
-    function keyCard(currentExam, index) {
+    function keyCard(currentExam, index, start) {
       const selectedKey = currentExam.key[index] ?? null;
       const userAnswer = currentExam.answers[index] ?? null;
       const optionBtns = OPTIONS.map((opt) =>
@@ -204,7 +209,7 @@ export function correctorView({ rootEl, store, navigate, exam }) {
         h(
           'div',
           { class: 'q-head' },
-          h('h3', { class: 'q-title' }, `سوال ${formatNumber(index + 1)}`),
+          h('h3', { class: 'q-title' }, formatQuestionNo(index, start)),
           h(
             'span',
             { class: `user-note ${userAnswer ? '' : 'user-note-empty'}` },
@@ -217,14 +222,18 @@ export function correctorView({ rootEl, store, navigate, exam }) {
               type: 'button',
               hidden: selectedKey == null,
               dataset: { clearKey: String(index) },
-              attrs: { 'aria-label': `پاک‌کردن کلید سوال ${index + 1}` },
+              attrs: { 'aria-label': `پاک‌کردن کلید ${formatQuestionNo(index, start)}` },
               onClick: () => selectKey(index, null),
             },
             'پاک کردن',
           ),
         ),
         h('p', { class: 'key-prompt' }, 'پاسخ صحیح را انتخاب کنید:'),
-        h('div', { class: 'option-grid', attrs: { role: 'radiogroup', 'aria-label': `کلید سوال ${index + 1}` } }, optionBtns),
+        h(
+          'div',
+          { class: 'option-grid', attrs: { role: 'radiogroup', 'aria-label': `کلید ${formatQuestionNo(index, start)}` } },
+          optionBtns,
+        ),
       );
     }
 

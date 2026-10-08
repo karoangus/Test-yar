@@ -1,5 +1,5 @@
 /* سرویس‌ورکر تست‌یار — قابلیت نصب و کارکرد آفلاین */
-const VERSION = 'testyar-v2';
+const VERSION = 'testyar-v3';
 const CORE = [
   './',
   './index.html',

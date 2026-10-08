@@ -3,9 +3,16 @@
 import { h, clearEl, scrollToEl, srOnly } from '../dom.js';
 import { onTick, confirmDialog, toast, icon, kbd } from '../components.js';
 import { OPTIONS, optionTitle } from '../../core/scoring.js';
-import { canAnswer, currentPhase, PHASE } from '../../core/model.js';
+import { canAnswer, currentPhase, PHASE, startNumberOf } from '../../core/model.js';
 import { remainingSeconds, effectiveEndsAt, elapsedRatio, pauseDurationMs } from '../../core/timer.js';
-import { formatNumber, formatClock, formatSeconds } from '../../core/format.js';
+import {
+  formatNumber,
+  formatClock,
+  formatSeconds,
+  formatQuestionNo,
+  formatRange,
+  formatAnswerCount,
+} from '../../core/format.js';
 import { attachQuestionShortcuts } from '../keyboard.js';
 
 export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
@@ -35,6 +42,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
     const phase = currentPhase(current, now);
     const locked = !canAnswer(current, now);
     const paused = phase === PHASE.PAUSED;
+    const start = startNumberOf(current);
     lastPhase = phase;
 
     const clockEl = h('span', { class: 'sheet-timer', dataset: { clock: '1' } }, '');
@@ -65,7 +73,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
         class: 'nav-chip',
         type: 'button',
         dataset: { chip: String(i) },
-        text: formatNumber(i + 1),
+        text: formatNumber(start + i),
         onClick: () => scrollToEl(container.querySelector(`.question-card[data-q="${i}"]`)),
       });
       chips.push(chip);
@@ -92,7 +100,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
     const navigator = h(
       'details',
       { class: 'qnav card' },
-      h('summary', null, 'پرش به سوال'),
+      h('summary', null, `پرش به سوال · شمارهٔ ${formatRange(start, current.questionCount)}`),
       nextUnansweredBtn,
       navGrid,
     );
@@ -100,7 +108,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
     // ── سوال‌ها ──
     const list = h('div', { class: 'question-list' });
     for (let i = 0; i < current.questionCount; i += 1) {
-      list.append(questionCard(current, i, locked));
+      list.append(questionCard(current, i, locked, start));
     }
 
     const pauseBtn = h(
@@ -194,11 +202,13 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
 
     const answered = Object.keys(current.answers).length;
     const total = Math.max(1, current.questionCount);
-    const label = `پاسخ‌داده: ${formatNumber(answered)} از ${formatNumber(current.questionCount)}`;
+    const start = startNumberOf(current);
+    // سربرگ چسبان: شمارنده + بازهٔ شمارهٔ سوال‌ها (کاربر همیشه می‌بیند کجای آزمون است)
     const labelEl = container.querySelector('[data-progress-label]');
-    if (labelEl) labelEl.textContent = label;
+    if (labelEl) labelEl.textContent = `پاسخ‌داده: ${formatAnswerCount(answered, current.questionCount, start)}`;
+    // نوار پایین: کوتاه بماند تا دکمه‌ها جا شوند (اطلاعات کامل در سربرگ هست)
     const countEl = container.querySelector('[data-count]');
-    if (countEl) countEl.textContent = label;
+    if (countEl) countEl.textContent = `پاسخ‌داده: ${formatAnswerCount(answered, current.questionCount, 1)}`;
     const answersFill = container.querySelector('.progress-fill:not(.time-fill)');
     if (answersFill) answersFill.style.width = `${(answered / total) * 100}%`;
     const timeFill = container.querySelector('.time-fill');
@@ -233,7 +243,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
     }
   }
 
-  function questionCard(current, index, locked) {
+  function questionCard(current, index, locked, start) {
     const selected = current.answers[index] ?? null;
     const optionBtns = OPTIONS.map((opt) =>
       h(
@@ -258,7 +268,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
       h(
         'div',
         { class: 'q-head' },
-        h('h3', { class: 'q-title' }, `سوال ${formatNumber(index + 1)}`),
+        h('h3', { class: 'q-title' }, formatQuestionNo(index, start)),
         h(
           'button',
           {
@@ -266,7 +276,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
             type: 'button',
             hidden: selected == null,
             dataset: { clear: String(index) },
-            attrs: { 'aria-label': `پاک‌کردن پاسخ سوال ${index + 1}` },
+            attrs: { 'aria-label': `پاک‌کردن پاسخ ${formatQuestionNo(index, start)}` },
             onClick: () => selectOption(index, null),
           },
           'پاک کردن',
@@ -274,7 +284,10 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
       ),
       h(
         'div',
-        { class: 'option-grid', attrs: { role: 'radiogroup', 'aria-label': `گزینه‌های سوال ${index + 1}` } },
+        {
+          class: 'option-grid',
+          attrs: { role: 'radiogroup', 'aria-label': `گزینه‌های ${formatQuestionNo(index, start)}` },
+        },
         optionBtns,
       ),
     );

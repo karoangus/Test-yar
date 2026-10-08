@@ -117,6 +117,50 @@ export function formatNumber(value) {
   return toFa(String(value));
 }
 
+// ── شماره‌گذاری سوال‌ها با «شمارهٔ شروع» دلخواه ──────────────────────────────
+// آزمون‌های واقعی همیشه از سوال ۱ شروع نمی‌شوند؛ مثلاً آزمونی که فقط سوال‌های
+// ۵۲ تا ۶۲ کتاب را پوشش می‌دهد با startNumber=۵۲ ساخته می‌شود و همه‌جای برنامه
+// (پاسخ‌برگ، تصحیح‌کننده، کارنامه، تاریخچه) همان شماره‌ها را نشان می‌دهد.
+
+/** شمارهٔ پایه: هر عدد صحیح بزرگ‌تر از صفر؛ در غیر این صورت ۱ */
+export function normalizeStartNumber(value) {
+  const n = Number(normalizeDigits(value));
+  return Number.isInteger(n) && n > 0 ? n : 1;
+}
+
+/** شمارهٔ نمایشی یک سوال از روی ایندکس صفر-مبنای آن */
+export function questionNumber(index, startNumber = 1) {
+  const base = normalizeStartNumber(startNumber);
+  const i = Number(index);
+  return base + (Number.isFinite(i) ? i : 0);
+}
+
+/** «سوال ۵۲» */
+export function formatQuestionNo(index, startNumber = 1) {
+  return `سوال ${formatNumber(questionNumber(index, startNumber))}`;
+}
+
+/** بازهٔ شمارهٔ سوال‌ها: «۵۲ تا ۶۲» (برای startNumber=۱ می‌شود «۱ تا ۲۰») */
+export function formatRange(startNumber, count) {
+  const base = normalizeStartNumber(startNumber);
+  const total = Math.max(0, Math.floor(Number(count) || 0));
+  const last = base + Math.max(0, total - 1);
+  return `${formatNumber(base)} تا ${formatNumber(last)}`;
+}
+
+/**
+ * شمارندهٔ کارهای انجام‌شده: «۱۸ از ۲۰» و اگر آزمون از شمارهٔ دیگری شروع شود
+ * بازهٔ شمارهٔ سوال‌ها هم کنارش می‌آید: «۱۸ از ۲۰ (سوال ۵۲ تا ۶۲)».
+ * این‌طور کاربر هرگز بین «تعداد پاسخ‌داده‌شده» و «شمارهٔ سوال» سرگردان نمی‌شود.
+ */
+export function formatAnswerCount(done, count, startNumber = 1) {
+  const base = normalizeStartNumber(startNumber);
+  const total = Math.max(0, Math.floor(Number(count) || 0));
+  const i = Math.max(0, Math.floor(Number(done) || 0));
+  const core = `${formatNumber(i)} از ${formatNumber(total)}`;
+  return base === 1 ? core : `${core} (سوال ${formatRange(base, total)})`;
+}
+
 /** تبدیل درصد به نمرهٔ ۲۰ (فقط برای نمایش؛ مقدار خام درصد دست‌نخورده می‌ماند) */
 export function formatScoreOutOf20(percent) {
   const score = roundTo(Number(percent) / 5, 2);

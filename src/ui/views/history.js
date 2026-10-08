@@ -18,6 +18,7 @@ import {
   formatDateTime,
   formatRelativeTime,
   formatClock,
+  formatRange,
 } from '../../core/format.js';
 import { STATUS, PHASE, currentPhase } from '../../core/model.js';
 import { remainingSeconds } from '../../core/timer.js';
@@ -208,6 +209,7 @@ export function historyView({ rootEl, store, navigate }) {
       ['دسته‌بندی', exam.category],
       ['تاریخ ایجاد', `${formatDateTime(exam.createdAt)} · ${formatRelativeTime(exam.createdAt)}`],
       ['تعداد سوال', formatNumber(exam.questionCount)],
+      ['شمارهٔ سوال‌ها', formatRange(exam.startNumber, exam.questionCount)],
       ['زمان', formatDuration(exam.durationMinutes)],
     ];
     if (exam.result) {
