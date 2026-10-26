@@ -20,7 +20,7 @@ import {
   formatClock,
   formatRange,
 } from '../../core/format.js';
-import { STATUS, PHASE, currentPhase } from '../../core/model.js';
+import { STATUS, PHASE, currentPhase, isAutoGradeReady } from '../../core/model.js';
 import { remainingSeconds } from '../../core/timer.js';
 
 const STATUS_FILTERS = [
@@ -163,7 +163,7 @@ export function historyView({ rootEl, store, navigate }) {
         h(
           'div',
           { class: 'filters card' },
-          searchInput,
+          h('div', { class: 'search-wrap' }, icon('search', 18), searchInput),
           segmented({ options: STATUS_FILTERS, value: filter, onChange: (v) => { filter = v; render(); }, label: 'فیلتر وضعیت' }),
           h(
             'div',
@@ -226,6 +226,9 @@ export function historyView({ rootEl, store, navigate }) {
       rows.push(['وضعیت تایمر', exam.pausedAt != null ? 'متوقف' : 'در حال اجرا']);
       rows.push(['تعداد توقف‌ها', formatNumber(exam.pauseCount ?? 0)]);
     }
+    if (exam.keyOrigin) {
+      rows.push(['کلید تصحیح', isAutoGradeReady(exam) ? 'آماده · خودکار' : 'به‌ارث‌رسیدهٔ ناقص']);
+    }
 
     const delBtn = h(
       'button',
@@ -269,7 +272,10 @@ export function historyView({ rootEl, store, navigate }) {
         onClick: (e) => {
           e.stopPropagation();
           const copy = store.duplicateExam(exam.id);
-          toast('آزمون تازه ساخته شد.', 'success');
+          toast(
+            copy.keyOrigin ? 'آزمون تازه ساخته شد؛ کلید تصحیح هم منتقل شد.' : 'آزمون تازه ساخته شد.',
+            'success',
+          );
           navigate(`/exam/${copy.id}`);
         },
       },
@@ -281,10 +287,19 @@ export function historyView({ rootEl, store, navigate }) {
         ? h('span', { class: 'meta-remaining', dataset: { historyTimer: '1', examId: exam.id } }, '')
         : null;
 
+    const tone =
+      exam.status === STATUS.GRADED
+        ? 'is-graded'
+        : exam.status === STATUS.IN_PROGRESS
+          ? 'is-live'
+          : exam.status === STATUS.CREATED
+            ? 'is-ready'
+            : 'is-awaiting';
+
     return h(
       'article',
       {
-        class: 'card history-card',
+        class: `card history-card ${tone}`,
         attrs: { role: 'button', tabindex: '0', 'aria-label': exam.name },
         onClick: () => navigate(`/exam/${exam.id}${exam.status === STATUS.GRADED ? '/result' : ''}`),
         onKeydown: (e) => {
@@ -300,7 +315,12 @@ export function historyView({ rootEl, store, navigate }) {
         h('h3', { class: 'card-title' }, exam.name),
         h('div', { class: 'history-actions' }, timerChip, statusBadge(exam), dupBtn, delBtn),
       ),
-      h('div', { class: 'card-cat' }, exam.category),
+      h(
+        'div',
+        { class: 'card-tags' },
+        h('span', { class: 'card-cat' }, exam.category),
+        isAutoGradeReady(exam) ? h('span', { class: 'card-flag' }, icon('zap', 12), ' کلید آماده') : null,
+      ),
       h('dl', { class: 'history-grid' }, rows.flatMap(([label, value]) => [h('dt', null, label), h('dd', null, String(value))])),
       exam.result ? h('div', { class: 'history-bar' }, h('div', { class: 'progress' }, h('div', { class: 'progress-fill', attrs: { style: `width:${Math.max(0, Math.min(100, exam.result.percentWithoutNegative))}%` } }))) : null,
     );

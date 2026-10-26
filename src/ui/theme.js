@@ -38,7 +38,7 @@ export function applyTheme(pref = readPref(), { persist = true } = {}) {
   root.dataset.theme = resolved;
   root.style.colorScheme = resolved;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', resolved === PREF.DARK ? '#0b1220' : '#1e3a8a');
+  if (meta) meta.setAttribute('content', resolved === PREF.DARK ? '#0a0f1d' : '#4f46e5');
   if (persist) {
     try {
       window.localStorage.setItem(THEME_KEY, pref);

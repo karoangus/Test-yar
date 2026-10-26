@@ -3,7 +3,7 @@
 import { h, clearEl, scrollToEl, srOnly } from '../dom.js';
 import { onTick, confirmDialog, toast, icon, kbd } from '../components.js';
 import { OPTIONS, optionTitle } from '../../core/scoring.js';
-import { canAnswer, currentPhase, PHASE, startNumberOf } from '../../core/model.js';
+import { canAnswer, currentPhase, PHASE, startNumberOf, isAutoGradeReady } from '../../core/model.js';
 import { remainingSeconds, effectiveEndsAt, elapsedRatio, pauseDurationMs } from '../../core/timer.js';
 import {
   formatNumber,
@@ -43,6 +43,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
     const locked = !canAnswer(current, now);
     const paused = phase === PHASE.PAUSED;
     const start = startNumberOf(current);
+    const autoGrade = isAutoGradeReady(current);
     lastPhase = phase;
 
     const clockEl = h('span', { class: 'sheet-timer', dataset: { clock: '1' } }, '');
@@ -54,7 +55,28 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
     const top = h(
       'div',
       { class: 'sheet-top' },
-      h('div', { class: 'sheet-top-row' }, h('span', { class: 'sheet-name' }, current.name), clockEl),
+      h(
+        'div',
+        { class: 'sheet-top-row' },
+        h('span', { class: 'sheet-name' }, current.name),
+        h(
+          'span',
+          { class: 'sheet-top-tools' },
+          autoGrade
+            ? h(
+                'span',
+                {
+                  class: 'auto-badge',
+                  dataset: { autoGrade: '1' },
+                  attrs: { title: 'کلید تصحیح آماده است؛ پس از پایان آزمون کارنامه خودکار ساخته می‌شود.' },
+                },
+                icon('zap', 12),
+                ' کلید آماده',
+              )
+            : null,
+          clockEl,
+        ),
+      ),
       h(
         'div',
         { class: 'sheet-top-row' },
@@ -139,7 +161,9 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
         onClick: async () => {
           const ok = await confirmDialog({
             title: 'آیا مطمئن هستید که می‌خواهید آزمون را پایان دهید؟',
-            message: 'پس از پایان، امکان تغییر پاسخ‌ها وجود ندارد و به تصحیح‌کننده می‌روید.',
+            message: autoGrade
+              ? 'پس از پایان، پاسخ‌ها با کلید آزمون قبلی تصحیح می‌شوند و کارنامه به‌صورت خودکار ساخته می‌شود.'
+              : 'پس از پایان، امکان تغییر پاسخ‌ها وجود ندارد و به تصحیح‌کننده می‌روید.',
             confirmLabel: 'پایان آزمون',
             cancelLabel: 'ادامه آزمون',
             danger: true,
@@ -159,8 +183,8 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
 
     container.append(top, h('main', { class: 'page sheet-page' }, navigator, list), footer);
 
-    if (paused) container.append(pausedOverlay(current));
-    else if (locked && phase === PHASE.EXPIRED) container.append(timeUpOverlay());
+    if (paused) container.append(pausedOverlay(current, autoGrade));
+    else if (locked && phase === PHASE.EXPIRED) container.append(timeUpOverlay(current, autoGrade));
 
     refreshDynamic(current, now);
     shortcuts = attachQuestionShortcuts({
@@ -322,7 +346,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
     refreshDynamic(store.get(exam.id), Date.now());
   }
 
-  function pausedOverlay(current) {
+  function pausedOverlay(current, autoGrade = false) {
     return h(
       'div',
       {
@@ -372,13 +396,13 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
               }
             },
           },
-          'پایان آزمون و رفتن به تصحیح',
+          autoGrade ? 'پایان آزمون و دیدن کارنامه' : 'پایان آزمون و رفتن به تصحیح',
         ),
       ),
     );
   }
 
-  function timeUpOverlay() {
+  function timeUpOverlay(current, autoGrade = false) {
     return h(
       'div',
       {
@@ -390,20 +414,26 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
         { class: 'lock-card' },
         h('div', { class: 'lock-icon' }, icon('clock', 44)),
         h('h2', null, 'زمان آزمون تمام شد'),
-        h('p', null, 'پاسخ‌گویی به پایان رسید.'),
+        h(
+          'p',
+          null,
+          autoGrade
+            ? 'پاسخ‌گویی به پایان رسید. کارنامه با کلید آزمون قبلی خودکار ساخته می‌شود.'
+            : 'پاسخ‌گویی به پایان رسید.',
+        ),
         h(
           'button',
           {
             class: 'btn btn-primary btn-xl',
             onClick: () => {
               try {
-                store.enterGrading(exam.id);
+                store.enterGrading(current.id);
               } catch (err) {
                 toast(err.message ?? 'ورود به تصحیح ممکن نشد.', 'error');
               }
             },
           },
-          'ورود به تصحیح‌کننده',
+          autoGrade ? 'دیدن کارنامه' : 'ورود به تصحیح‌کننده',
         ),
       ),
     );

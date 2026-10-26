@@ -6,7 +6,7 @@ import { isValidOption, findMissingKeys, computeResults, QUESTION_STATUS } from 
 
 export const STORAGE_KEY = 'testyar.exams.v1';
 export const BACKUP_FORMAT = 'testyar.backup';
-export const BACKUP_VERSION = 3;
+export const BACKUP_VERSION = 4;
 
 /** آداپتور ذخیره‌سازی: ابتدا localStorage، در صورت عدم دسترسی حافظهٔ موقت */
 export function createStorageAdapter(backend) {
@@ -69,6 +69,22 @@ function sanitizeAnswerMap(raw, total) {
 }
 
 const RESULT_STATUSES = Object.values(QUESTION_STATUS);
+
+/**
+ * اعتبارسنجی «منبع کلید» (کلید به‌ارث‌رسیده از آزمون قبلی).
+ * دادهٔ خراب نادیده گرفته می‌شود تا تصحیح خودکار بی‌دلیل فعال نشود.
+ */
+export function sanitizeKeyOrigin(raw) {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const examId = typeof raw.examId === 'string' && raw.examId.trim() ? raw.examId.trim() : null;
+  if (!examId) return null;
+  const examName = typeof raw.examName === 'string' && raw.examName.trim() ? raw.examName.trim() : 'آزمون قبلی';
+  return {
+    examId,
+    examName: examName.slice(0, 120),
+    at: Number.isFinite(raw.at) ? raw.at : null,
+  };
+}
 
 /** محاسبهٔ نتیجه از پاسخ و کلید (برای ترمیم نتیجهٔ خراب) — در صورت خطا null */
 function recomputeResult(total, answers, key) {
@@ -162,6 +178,7 @@ export function sanitizeExam(raw) {
     Number.isInteger(rawStart) && rawStart > 0 && rawStart <= MAX_START_NUMBER ? rawStart : DEFAULT_START_NUMBER;
   const answers = sanitizeAnswerMap(raw.answers, questionCount);
   const key = sanitizeAnswerMap(raw.key, questionCount);
+  const keyOrigin = sanitizeKeyOrigin(raw.keyOrigin);
   const result = sanitizeResult(raw.result, questionCount, answers, key);
 
   let status = Object.values(STATUS).includes(raw.status) ? raw.status : STATUS.CREATED;
@@ -205,6 +222,7 @@ export function sanitizeExam(raw) {
     pauseCount,
     answers,
     key,
+    keyOrigin,
     result,
   };
 }

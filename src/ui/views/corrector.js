@@ -77,6 +77,24 @@ export function correctorView({ rootEl, store, navigate, exam }) {
       ),
     );
 
+    const inheritedBanner = current.keyOrigin
+      ? h(
+          'div',
+          { class: 'info-banner', attrs: { role: 'status' } },
+          h('span', { class: 'info-banner-icon' }, icon('zap', 18)),
+          h(
+            'div',
+            null,
+            h('strong', null, 'کلید از آزمون قبلی آماده است'),
+            h(
+              'p',
+              null,
+              `کلید «${current.keyOrigin.examName || 'آزمون قبلی'}» به این آزمون منتقل شده است؛ نیازی به وارد کردن دوباره نیست. برای ساخت کارنامه مستقیم «اتمام تصحیح» را بزنید.`,
+            ),
+          ),
+        )
+      : null;
+
     const filterBar = h(
       'div',
       { class: 'toolbar' },
@@ -149,7 +167,8 @@ export function correctorView({ rootEl, store, navigate, exam }) {
 
     const footer = h('div', { class: 'sheet-footer' }, keyCountEl, finishBtn);
 
-    container.append(top, warning, h('main', { class: 'page sheet-page' }, filterBar, list), footer);
+    // append(null) متن «null» را چاپ می‌کند؛ پس فقط عناصر واقعی اضافه می‌شوند
+    container.append(top, ...(inheritedBanner ? [inheritedBanner] : []), warning, h('main', { class: 'page sheet-page' }, filterBar, list), footer);
     refreshKeyCount();
 
     function refreshKeyCount() {

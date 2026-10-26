@@ -8,7 +8,19 @@
 //   ۲) هر تغییر تراکنشی است؛ اگر در میانهٔ تغییر خطایی رخ دهد، آزمون به حالت
 //      قبلی برمی‌گردد و حافظه با localStorage ناهم‌خوان نمی‌شود.
 
-import { STATUS, createExam, validateExamInput, validateExamMeta, canAnswer, currentPhase, PHASE } from './model.js';
+import {
+  STATUS,
+  MAX_NAME_LENGTH,
+  createExam,
+  validateExamInput,
+  validateExamMeta,
+  canAnswer,
+  currentPhase,
+  hasCompleteKey,
+  isAutoGradeReady,
+  PHASE,
+} from './model.js';
+import { normalizeDigits, toFa } from './format.js';
 import { scheduledEndsAt, isExpired, isPaused, pausedTotalMs, remainingMs, activeElapsedMs } from './timer.js';
 import { computeResults, findMissingKeys, isValidOption, findUnanswered } from './scoring.js';
 import {
@@ -26,6 +38,26 @@ export class DomainError extends Error {
     this.name = 'DomainError';
     this.errors = errors;
   }
+}
+
+const REPEAT_SUFFIX = ' (تکرار)';
+
+/**
+ * نام آزمون تکرارشده؛ اگر خودِ نام قبلاً «(تکرار)» داشته باشد شماره می‌گیرد
+ * تا نام‌هایی مثل «آزمون (تکرار) (تکرار)» ساخته نشود.
+ */
+function buildRepeatedName(sourceName, suffix = REPEAT_SUFFIX) {
+  const name = String(sourceName ?? '').trim();
+  if (suffix !== REPEAT_SUFFIX) {
+    return `${name}${suffix}`.slice(0, MAX_NAME_LENGTH).trim();
+  }
+  const match = /^(.*?)\s*\(تکرار(?:\s*([0-9۰-۹]+))?\)$/.exec(name);
+  const base = match && match[1].trim() ? match[1].trim() : name;
+  const previous = match?.[2] ? Number(normalizeDigits(match[2])) : NaN;
+  const next = match ? (Number.isInteger(previous) ? previous + 1 : 2) : 1;
+  const tail = next === 1 ? REPEAT_SUFFIX : ` (تکرار ${toFa(next)})`;
+  const room = Math.max(1, MAX_NAME_LENGTH - tail.length);
+  return `${base.slice(0, room).trim()}${tail}`;
 }
 
 /** کپی عمیق دادهٔ ساده (برای جلوگیری از درز شیء داخلی به UI) */
@@ -100,6 +132,37 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
     }
     commit();
     return exams[index];
+  }
+
+  /**
+   * محاسبه و ثبت نتیجه روی خود شیء آزمون (بدون commit).
+   * کلید باید کامل باشد؛ همین تابع هم مسیر تصحیح دستی و هم مسیر تصحیح
+   * خودکار (کلید به‌ارث‌رسیده) را تغذیه می‌کند تا نتیجه‌ها همیشه یکسان باشند.
+   */
+  function applyGrade(exam, at = now()) {
+    const results = computeResults({
+      total: exam.questionCount,
+      answers: exam.answers,
+      key: exam.key,
+    });
+    exam.status = STATUS.GRADED;
+    exam.gradedAt = at;
+    exam.pausedAt = null;
+    exam.result = {
+      total: results.total,
+      correct: results.correct,
+      wrong: results.wrong,
+      unanswered: results.unanswered,
+      percentWithoutNegative: results.percentWithoutNegative,
+      percentWithNegative: results.percentWithNegative,
+      perQuestion: results.perQuestion,
+      // آمار زمان (بدون توقف‌ها) برای صفحهٔ نتیجه
+      durationMinutes: exam.durationMinutes,
+      activeElapsedMs: Math.min(activeElapsedMs(exam, exam.endedAt ?? at), exam.durationMinutes * 60_000),
+      pausedTotalMs: pausedTotalMs(exam),
+      pauseCount: exam.pauseCount ?? 0,
+    };
+    return exam.result;
   }
 
   /** برآورد آماری برای داشبورد صفحهٔ اصلی (همه از روی دادهٔ واقعی ذخیره‌شده) */
@@ -243,13 +306,20 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
       return clone(updated);
     },
 
-    /** تکرار آزمون: آزمون تازه با همان تنظیمات و بدون پاسخ/کلید */
-    duplicateExam(id, { nameSuffix = ' (تکرار)' } = {}) {
+    /**
+     * تکرار آزمون: آزمون تازه با همان تنظیمات و بدون پاسخ‌ها.
+     *
+     * اگر آزمون مبدأ کلید کامل داشته باشد (مثلاً قبلاً تصحیح شده باشد)، همان
+     * کلید به آزمون تازه منتقل می‌شود و `keyOrigin` ثبت می‌گردد؛ در این حالت
+     * پس از پایان آزمون، تصحیح خودکار انجام می‌شود و کاربر لازم نیست دوباره
+     * کلیدها را وارد کند. با `inheritKey: false` می‌توان این رفتار را خاموش کرد.
+     */
+    duplicateExam(id, { nameSuffix = REPEAT_SUFFIX, inheritKey = true } = {}) {
       const source = find(id);
       if (!source) throw new DomainError('آزمون پیدا نشد.');
       const copy = createExam(
         {
-          name: `${source.name}${nameSuffix}`.slice(0, 80).trim(),
+          name: buildRepeatedName(source.name, nameSuffix),
           category: source.category,
           questionCount: source.questionCount,
           durationMinutes: source.durationMinutes,
@@ -257,9 +327,34 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
         },
         now(),
       );
+      if (inheritKey && hasCompleteKey(source)) {
+        copy.key = { ...source.key };
+        copy.keyOrigin = source.keyOrigin
+          ? { ...source.keyOrigin }
+          : { examId: source.id, examName: source.name, at: now() };
+      }
       exams.push(copy);
       commit();
       return clone(copy);
+    },
+
+    /**
+     * حذف کلید به‌ارث‌رسیده پیش از شروع آزمون؛ پس از پایان، کلید دستی
+     * وارد می‌شود. (برای وقتی که کاربر می‌خواهد کلید تازه‌ای تعیین کند.)
+     */
+    clearInheritedKey(id) {
+      return clone(
+        update(id, (exam) => {
+          if (exam.status !== STATUS.CREATED) {
+            throw new DomainError('پس از شروع آزمون، تغییر کلید ممکن نیست.');
+          }
+          if (!exam.keyOrigin && Object.keys(exam.key ?? {}).length === 0) {
+            throw new DomainError('کلیدی برای حذف وجود ندارد.');
+          }
+          exam.key = {};
+          exam.keyOrigin = null;
+        }),
+      );
     },
 
     startExam(id) {
@@ -332,12 +427,14 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
             exam.pausedAt = null;
           }
           exam.endedAt = Math.min(t, scheduledEndsAt(exam.startedAt, exam.durationMinutes, pausedTotalMs(exam)));
-          exam.status = STATUS.AWAITING_GRADING;
+          // کلید به‌ارث‌رسیده و کامل → بدون توقف در تصحیح‌کننده، مستقیم کارنامه
+          if (isAutoGradeReady(exam)) applyGrade(exam, t);
+          else exam.status = STATUS.AWAITING_GRADING;
         }),
       );
     },
 
-    /** ورود به تصحیح‌کننده پس از پایان زمان */
+    /** ورود به تصحیح‌کننده پس از پایان زمان (در صورت کلید آماده: تصحیح خودکار) */
     enterGrading(id) {
       return clone(
         update(id, (exam) => {
@@ -345,11 +442,12 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
           if (currentPhase(exam, t) !== PHASE.EXPIRED) {
             throw new DomainError('زمان آزمون هنوز تمام نشده است.');
           }
-          exam.status = STATUS.AWAITING_GRADING;
           exam.pausedAt = null;
           if (exam.endedAt == null) {
             exam.endedAt = scheduledEndsAt(exam.startedAt, exam.durationMinutes, pausedTotalMs(exam));
           }
+          if (isAutoGradeReady(exam)) applyGrade(exam, t);
+          else exam.status = STATUS.AWAITING_GRADING;
         }),
       );
     },
@@ -400,30 +498,7 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
       if (missing.length > 0) {
         return { ok: false, missing };
       }
-      const results = computeResults({
-        total: exam.questionCount,
-        answers: exam.answers,
-        key: exam.key,
-      });
-      const graded = update(id, (e) => {
-        e.status = STATUS.GRADED;
-        e.gradedAt = now();
-        e.pausedAt = null;
-        e.result = {
-          total: results.total,
-          correct: results.correct,
-          wrong: results.wrong,
-          unanswered: results.unanswered,
-          percentWithoutNegative: results.percentWithoutNegative,
-          percentWithNegative: results.percentWithNegative,
-          perQuestion: results.perQuestion,
-          // آمار زمان (بدون توقف‌ها) برای صفحهٔ نتیجه
-          durationMinutes: e.durationMinutes,
-          activeElapsedMs: Math.min(activeElapsedMs(e, e.endedAt ?? now()), e.durationMinutes * 60_000),
-          pausedTotalMs: pausedTotalMs(e),
-          pauseCount: e.pauseCount ?? 0,
-        };
-      });
+      const graded = update(id, (e) => applyGrade(e, now()));
       return { ok: true, result: clone(graded.result) };
     },
 

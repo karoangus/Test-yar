@@ -4,7 +4,14 @@ import { h, clearEl } from '../dom.js';
 import { icon, confirmDialog, toast } from '../components.js';
 import { formatNumber, formatDuration, formatRange, normalizeStartNumber } from '../../core/format.js';
 import { OPTIONS } from '../../core/scoring.js';
-import { CATEGORIES, STATUS, startNumberOf, MAX_START_NUMBER } from '../../core/model.js';
+import {
+  CATEGORIES,
+  STATUS,
+  startNumberOf,
+  hasCompleteKey,
+  isAutoGradeReady,
+  MAX_START_NUMBER,
+} from '../../core/model.js';
 import { DomainError } from '../../core/store.js';
 
 export function prepareView({ rootEl, store, navigate, exam }) {
@@ -41,9 +48,12 @@ export function prepareView({ rootEl, store, navigate, exam }) {
       ' شروع آزمون',
     );
 
+    const autoGrade = isAutoGradeReady(current);
     const card = h(
       'section',
       { class: 'card prepare-card' },
+      h('div', { class: 'prepare-orb' }, icon('play', 24)),
+      h('span', { class: 'prepare-eyebrow' }, autoGrade ? 'کلید تصحیح آماده است' : 'همه‌چیز آمادهٔ شروع'),
       h('h3', { class: 'prepare-title' }, current.name),
       h('span', { class: 'prepare-cat' }, current.category),
       h(
@@ -54,6 +64,10 @@ export function prepareView({ rootEl, store, navigate, exam }) {
         infoRow('زمان آزمون', formatDuration(current.durationMinutes)),
         infoRow('گزینه‌ها', OPTIONS.map((o) => o.label).join(' · ')),
         infoRow('توقف تایمر', 'فعال — زمان در حین توقف مصرف نمی‌شود'),
+        infoRow(
+          'تصحیح',
+          autoGrade ? 'خودکار · کلید آزمون قبلی' : current.keyOrigin ? 'دستی · کلید ناقص' : 'دستی · ورود کلید پس از پایان',
+        ),
       ),
       h('p', { class: 'hint' }, 'تا زمانی که دکمهٔ «شروع آزمون» را نزنید، تایمر آغاز نمی‌شود.'),
       startBtn,
@@ -72,6 +86,7 @@ export function prepareView({ rootEl, store, navigate, exam }) {
       ),
     );
 
+    const inheritCard = inheritedKeyCard(current);
     const editForm = editing ? editCard(current) : null;
 
     container.append(
@@ -81,7 +96,62 @@ export function prepareView({ rootEl, store, navigate, exam }) {
         h('a', { class: 'btn btn-ghost btn-sm', href: '#/' }, '→ بازگشت'),
         h('h2', null, 'آماده‌ای؟'),
       ),
-      h('main', { class: 'page' }, card, editForm),
+      h('main', { class: 'page' }, card, inheritCard, editForm),
+    );
+  }
+
+  /**
+   * اطلاع‌رسانی کلید به‌ارث‌رسیده: کاربر می‌داند که پس از پایان آزمون
+   * کلیدها را دوباره وارد نمی‌کند و کارنامه خودکار ساخته می‌شود.
+   */
+  function inheritedKeyCard(current) {
+    const origin = current.keyOrigin;
+    if (!origin) return null;
+    const complete = hasCompleteKey(current);
+    const sourceName = origin.examName || 'آزمون قبلی';
+    return h(
+      'section',
+      { class: `card inherit-card${complete ? '' : ' is-incomplete'}` },
+      h('span', { class: 'inherit-icon' }, icon(complete ? 'zap' : 'warning', 22)),
+      h(
+        'div',
+        { class: 'inherit-body' },
+        h('h3', null, complete ? 'کلید تصحیح از قبل آماده است' : 'کلید به‌ارث‌رسیده کامل نیست'),
+        h(
+          'p',
+          null,
+          complete
+            ? `کلید صحیح ${formatNumber(current.questionCount)} سوال از آزمون «${sourceName}» به ارث رسیده است؛ نیازی به وارد کردن دوبارهٔ کلیدها نیست. با پایان آزمون، کارنامه به‌صورت خودکار ساخته می‌شود.`
+            : `این آزمون از روی «${sourceName}» تکرار شده اما کلید کامل نیست؛ پس از پایان، تصحیح‌کننده باز می‌شود و باید کلیدها را وارد کنید.`,
+        ),
+        h(
+          'button',
+          {
+            class: 'btn btn-ghost btn-sm',
+            type: 'button',
+            onClick: async () => {
+              const ok = await confirmDialog({
+                title: 'ورود کلید جدید',
+                message: complete
+                  ? 'کلید به‌ارث‌رسیده پاک شود؟ در این صورت پس از پایان آزمون باید پاسخ صحیح همهٔ سوال‌ها را خودتان وارد کنید.'
+                  : 'کلید به‌ارث‌رسیده پاک شود؟',
+                confirmLabel: 'پاک کردن کلید',
+                cancelLabel: 'انصراف',
+                danger: true,
+              });
+              if (!ok) return;
+              try {
+                store.clearInheritedKey(current.id);
+                toast('کلید پاک شد؛ تصحیح این آزمون دستی خواهد بود.', 'info');
+              } catch (err) {
+                toast(err.message ?? 'پاک کردن کلید ممکن نشد.', 'error');
+              }
+            },
+          },
+          icon('key', 15),
+          ' وارد کردن کلید جدید',
+        ),
+      ),
     );
   }
 

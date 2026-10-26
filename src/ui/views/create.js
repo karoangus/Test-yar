@@ -154,6 +154,12 @@ export function createView({ rootEl, store, navigate }) {
       categorySelect,
       fieldError('category'),
     ),
+    h(
+      'div',
+      { class: 'form-note' },
+      icon('shield', 15),
+      ' همه‌چیز فقط روی همین دستگاه ذخیره می‌شود؛ بدون حساب کاربری و بدون اینترنت.',
+    ),
     h('button', { class: 'btn btn-primary btn-block btn-xl', type: 'submit' }, icon('plus', 18), ' ساخت آزمون'),
   );
 
@@ -205,7 +211,22 @@ export function createView({ rootEl, store, navigate }) {
       h('a', { class: 'btn btn-ghost btn-sm', href: '#/' }, '→ بازگشت'),
       h('h2', null, 'ساخت آزمون جدید'),
     ),
-    h('main', { class: 'page' }, form),
+    h(
+      'main',
+      { class: 'page' },
+      h(
+        'section',
+        { class: 'card form-intro' },
+        h('span', { class: 'form-intro-icon' }, icon('sparkles', 22)),
+        h(
+          'div',
+          null,
+          h('h3', null, 'یک آزمون تازه بساز'),
+          h('p', null, 'تعداد سوال و زمان را مشخص کن؛ بقیهٔ کارها با تست‌یار است.'),
+        ),
+      ),
+      form,
+    ),
   );
 
   nameInput.focus();
