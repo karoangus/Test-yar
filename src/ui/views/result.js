@@ -10,6 +10,8 @@ import {
   formatDuration,
   formatSeconds,
   formatScoreOutOf20,
+  roundTo,
+  toFa,
 } from '../../core/format.js';
 import { optionLabel, QUESTION_STATUS } from '../../core/scoring.js';
 import { startNumberOf } from '../../core/model.js';
@@ -60,16 +62,19 @@ export function resultView({ rootEl, store, navigate, exam }) {
       return;
     }
 
-    const statCard = (emoji, label, value, tone) =>
+    const statCard = (iconName, label, value, tone) =>
       h(
         'div',
         { class: `stat-card ${tone}` },
-        h('span', { class: 'stat-emoji' }, emoji),
+        h('span', { class: 'stat-emoji' }, icon(iconName, 16)),
         h('strong', { class: 'stat-value' }, value),
         h('span', { class: 'stat-label' }, label),
       );
 
     const start = startNumberOf(current);
+    const score = roundTo(result.percentWithNegative / 5, 2);
+    const scoreText = toFa(String(Object.is(score, -0) ? 0 : score));
+    const ringPercent = Math.max(0, Math.min(100, Number(result.percentWithNegative) || 0));
     const reviewRows = result.perQuestion.map((q) =>
       h(
         'li',
@@ -119,29 +124,62 @@ export function resultView({ rootEl, store, navigate, exam }) {
       emptyReview.hidden = visible > 0;
     }
 
+    const scoreRing = h(
+      'div',
+      {
+        class: 'score-ring',
+        style: { '--p': `${ringPercent}%` },
+        attrs: { role: 'img', 'aria-label': `نمرهٔ ${scoreText} از ۲۰` },
+      },
+      h(
+        'div',
+        { class: 'score-ring-inner' },
+        h('span', { class: 'score-ring-value' }, scoreText),
+        h('span', { class: 'score-ring-unit' }, 'از ۲۰'),
+        h('span', { class: 'score-ring-label' }, 'نمرهٔ نهایی'),
+      ),
+    );
+
+    const inheritedNote = current.keyOrigin
+      ? h(
+          'p',
+          { class: 'inherit-note' },
+          icon('zap', 14),
+          `کلید تصحیح از آزمون «${current.keyOrigin.examName || 'آزمون قبلی'}» به ارث رسیده است.`,
+        )
+      : null;
+
     const hero = h(
       'section',
       { class: 'card result-hero' },
-      h('h3', { class: 'result-name' }, current.name),
-      start > 1
-        ? h('p', { class: 'hint' }, `شمارهٔ سوال‌ها: ${formatRange(start, result.total)}`)
-        : null,
       h(
         'div',
-        { class: 'card-meta' },
-        h('span', null, current.category),
-        h('span', { class: 'dot' }, '·'),
-        h('span', null, formatDateTime(current.gradedAt)),
-        h('span', { class: 'dot' }, '·'),
-        h('span', null, formatRelativeTime(current.gradedAt)),
+        { class: 'result-hero-main' },
+        h(
+          'div',
+          { class: 'result-hero-copy' },
+          h('span', { class: 'eyebrow' }, current.category),
+          h('h3', { class: 'result-name' }, current.name),
+          h(
+            'div',
+            { class: 'card-meta' },
+            start > 1 ? h('span', null, `شمارهٔ ${formatRange(start, result.total)}`) : null,
+            start > 1 ? h('span', { class: 'dot' }, '·') : null,
+            h('span', null, formatDateTime(current.gradedAt)),
+            h('span', { class: 'dot' }, '·'),
+            h('span', null, formatRelativeTime(current.gradedAt)),
+          ),
+          inheritedNote,
+        ),
+        scoreRing,
       ),
       h(
         'div',
         { class: 'stat-grid' },
-        statCard('📝', 'تعداد سوالات', formatNumber(result.total), 'tone-neutral'),
-        statCard('✅', 'درست', formatNumber(result.correct), 'tone-correct'),
-        statCard('❌', 'غلط', formatNumber(result.wrong), 'tone-wrong'),
-        statCard('⚪', 'نزده', formatNumber(result.unanswered), 'tone-none'),
+        statCard('doc', 'تعداد سوالات', formatNumber(result.total), 'tone-neutral'),
+        statCard('check', 'درست', formatNumber(result.correct), 'tone-correct'),
+        statCard('close', 'غلط', formatNumber(result.wrong), 'tone-wrong'),
+        statCard('target', 'نزده', formatNumber(result.unanswered), 'tone-none'),
       ),
     );
 
@@ -218,7 +256,10 @@ export function resultView({ rootEl, store, navigate, exam }) {
           type: 'button',
           onClick: () => {
             const copy = store.duplicateExam(current.id);
-            toast('آزمون تازه با همین تنظیمات ساخته شد.', 'success');
+            toast(
+              copy.keyOrigin ? 'آزمون تازه ساخته شد؛ کلید تصحیح هم منتقل شد.' : 'آزمون تازه با همین تنظیمات ساخته شد.',
+              'success',
+            );
             navigate(`/exam/${copy.id}`);
           },
         },

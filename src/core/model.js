@@ -1,6 +1,7 @@
 // ── مدل دادهٔ آزمون، وضعیت‌ها و اعتبارسنجی ───────────────────────────────────
 
 import { normalizeDigits } from './format.js';
+import { findMissingKeys } from './scoring.js';
 import { isExpired, isPaused } from './timer.js';
 
 export const CATEGORIES = Object.freeze([
@@ -178,6 +179,9 @@ export function createExam(input, now = Date.now()) {
     pauseCount: 0,        // تعداد دفعات توقف
     answers: {},
     key: {},
+    // اگر کلید تصحیح از آزمون قبلی به ارث رسیده باشد: { examId, examName, at }
+    // وجود این فیلد + کلید کامل یعنی «تصحیح خودکار» بدون وارد کردن دوبارهٔ کلید.
+    keyOrigin: null,
     result: null,
   };
 }
@@ -229,4 +233,23 @@ export function isLive(exam) {
 export function startNumberOf(exam) {
   const n = Number(exam?.startNumber);
   return Number.isInteger(n) && n > 0 ? n : DEFAULT_START_NUMBER;
+}
+
+// ── کلید به‌ارث‌رسیده و تصحیح خودکار ─────────────────────────────────────────
+// وقتی آزمونی تکرار می‌شود و آزمون مبدأ کلید کامل دارد (یعنی قبلاً تصحیح شده)،
+// همان کلید به آزمون تازه منتقل می‌شود تا کاربر مجبور نباشد دوباره کلیدها را
+// وارد کند. در این حالت پس از پایان آزمون، تصحیح خودکار انجام می‌شود.
+
+/** آیا کلید صحیح همهٔ سوال‌های آزمون وارد شده است؟ */
+export function hasCompleteKey(exam) {
+  if (exam == null) return false;
+  const total = Number(exam.questionCount);
+  if (!Number.isInteger(total) || total < 1) return false;
+  return findMissingKeys(total, exam.key).length === 0;
+}
+
+/** آیا آزمون کلید به‌ارث‌رسیدهٔ کامل دارد و باید خودکار تصحیح شود؟ */
+export function isAutoGradeReady(exam) {
+  const origin = exam?.keyOrigin;
+  return origin != null && origin.examId != null && hasCompleteKey(exam);
 }
