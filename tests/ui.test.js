@@ -133,6 +133,8 @@ test('سناریو کامل UI: ساخت → شروع → پاسخ → قفل �
   await settle();
   await settle();
   assert.match(text('.sheet-name'), /تصحیح‌کننده/);
+  assert.equal($('.user-note'), null, 'پاسخ دانش‌آموز در تصحیح‌کننده نمایش داده نمی‌شود');
+  assert.equal(document.body.textContent.includes('پاسخ دانش‌آموز'), false, 'متن پاسخ دانش‌آموز در تصحیح‌کننده حذف شده است');
 
   // اتمام تصحیح بدون کلید → هشدار با شمارهٔ سوال‌ها
   click($$('.sheet-footer .btn').find((b) => b.textContent.includes('اتمام تصحیح')));
