@@ -38,7 +38,7 @@ export function prepareView({ rootEl, store, navigate, exam }) {
             title: 'آماده‌ای؟',
             message: timed
               ? 'با شروع آزمون تایمر بلافاصله آغاز می‌شود. در صورت نیاز می‌توانید وسط آزمون تایمر را متوقف کنید و بعد ادامه دهید؛ زمان توقف از وقت آزمون کم نمی‌شود.'
-              : 'این آزمون بدون محدودیت زمانی است و تایمر ندارد؛ هر زمان که خودتان دکمهٔ «پایان آزمون» را بزنید آزمون تمام می‌شود.',
+              : 'با شروع آزمون کرنومتر از ۰۰:۰۰ به کار می‌افتد تا زمان سپری‌شده را بسنجد. هر زمان که خودتان دکمهٔ «پایان آزمون» را بزنید، زمان در آزمون ثبت می‌شود.',
             confirmLabel: 'شروع آزمون',
             cancelLabel: 'هنوز نه',
           });
@@ -64,11 +64,13 @@ export function prepareView({ rootEl, store, navigate, exam }) {
         { class: 'info-grid' },
         infoRow('تعداد سوالات', `${formatNumber(current.questionCount)} سوال`),
         infoRow('شمارهٔ سوال‌ها', `${formatRange(startNumberOf(current), current.questionCount)}`),
-        infoRow('زمان آزمون', formatDuration(current.durationMinutes)),
+        infoRow('زمان آزمون', timed ? formatDuration(current.durationMinutes) : 'بدون زمان (کرنومتر)'),
         infoRow('گزینه‌ها', OPTIONS.map((o) => o.label).join(' · ')),
         infoRow(
           'توقف تایمر',
-          timed ? 'فعال — زمان در حین توقف مصرف نمی‌شود' : 'ندارد — آزمون بدون تایمر است و با پایان دستی تمام می‌شود',
+          timed
+            ? 'فعال — زمان در حین توقف مصرف نمی‌شود'
+            : 'فعال — کرنومتر زمان سپری‌شده را می‌سنجد و در پایان ثبت می‌شود',
         ),
         infoRow(
           'تصحیح',
@@ -80,7 +82,7 @@ export function prepareView({ rootEl, store, navigate, exam }) {
         { class: 'hint' },
         timed
           ? 'تا زمانی که دکمهٔ «شروع آزمون» را نزنید، تایمر آغاز نمی‌شود.'
-          : 'این آزمون بدون محدودیت زمانی است؛ هر زمان آماده بودید شروع کنید و هر وقت خواستید آزمون را تمام کنید.',
+          : 'تا زمانی که دکمهٔ «شروع آزمون» را نزنید، کرنومتر آغاز نمی‌شود.',
       ),
       startBtn,
       h(

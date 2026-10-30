@@ -410,11 +410,12 @@ test('آزمون بدون شمارهٔ شروع (دادهٔ قدیمی) با ش�
   assert.equal(store.get('old-1').startNumber, 1);
 });
 
-test('آزمون بدون زمان: با گذر زمان منقضی نمی‌شود و هر زمان کاربر تمام کرد به پایان می‌رسد', () => {
+test('آزمون بدون زمان: کرنومتر زمان سپری‌شده را می‌شمارد، قابل توقف/ادامه است و در پایان آزمون زمان را ثبت می‌کند', () => {
   const clock = { value: T0 };
   const { backend, store } = makeStore(clock);
   const exam = store.addExam({ name: 'آزمون آزاد', questionCount: 3, durationMinutes: '', category: 'عربی' });
   assert.equal(exam.durationMinutes, null);
+  assert.equal(exam.elapsedMs, null);
 
   store.startExam(exam.id);
   store.setAnswer(exam.id, 0, 'A');
@@ -428,25 +429,34 @@ test('آزمون بدون زمان: با گذر زمان منقضی نمی‌ش�
   const reopened = createAppStore({ storage: backend, now: () => clock.value });
   assert.equal(reopened.get(exam.id).status, STATUS.IN_PROGRESS);
 
-  // هنوز می‌توان پاسخ داد
+  // توقف و ادامهٔ کرنومتر
+  reopened.pauseExam(exam.id);
+  clock.value += 10 * 60_000; // ۱۰ دقیقه استراحت
+  reopened.resumeExam(exam.id);
+  clock.value += 25 * 1000; // ۲۵ ثانیه پاسخ‌گویی بیشتر
   reopened.setAnswer(exam.id, 1, 'B');
-  // آزمون بدون تایمر توقف تایمر ندارد
-  assert.throws(() => reopened.pauseExam(exam.id), DomainError);
 
-  // پایان دستی توسط کاربر
+  // پایان دستی توسط کاربر: زمان فعال باید در آزمون ثبت شود
   const ended = reopened.endExamManually(exam.id);
   assert.equal(ended.status, STATUS.AWAITING_GRADING);
   assert.equal(ended.endedAt, clock.value);
+  assert.equal(ended.elapsedMs, 5 * 3600_000 + 25_000);
 
-  reopened.setKeyEntry(exam.id, 0, 'A');
-  reopened.setKeyEntry(exam.id, 1, 'B');
-  reopened.setKeyEntry(exam.id, 2, 'C');
-  const graded = reopened.finishGrading(exam.id);
+  // زمان ثبت‌شده در ذخیره‌سازی هم باقی می‌ماند
+  const persisted = createAppStore({ storage: backend, now: () => clock.value });
+  assert.equal(persisted.get(exam.id).elapsedMs, 5 * 3600_000 + 25_000);
+
+  persisted.setKeyEntry(exam.id, 0, 'A');
+  persisted.setKeyEntry(exam.id, 1, 'B');
+  persisted.setKeyEntry(exam.id, 2, 'C');
+  const graded = persisted.finishGrading(exam.id);
   assert.equal(graded.ok, true);
   assert.equal(graded.result.durationMinutes, null);
-  assert.equal(graded.result.activeElapsedMs, 5 * 3600_000);
+  assert.equal(graded.result.activeElapsedMs, 5 * 3600_000 + 25_000);
+  assert.equal(persisted.get(exam.id).elapsedMs, 5 * 3600_000 + 25_000);
 
-  // تکرار آزمون بدون زمان، آزمون بدون زمان تازه می‌سازد
-  const copy = reopened.duplicateExam(exam.id);
+  // تکرار آزمون بدون زمان، آزمون بدون زمان تازه با elapsedMs خالی می‌سازد
+  const copy = persisted.duplicateExam(exam.id);
   assert.equal(copy.durationMinutes, null);
+  assert.equal(copy.elapsedMs, null);
 });

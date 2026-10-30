@@ -150,7 +150,7 @@ function sanitizeResult(raw, total, answers, key) {
     });
   }
 
-  return {
+  const out = {
     total,
     correct: raw.correct,
     wrong: raw.wrong,
@@ -159,6 +159,19 @@ function sanitizeResult(raw, total, answers, key) {
     percentWithNegative: raw.percentWithNegative,
     perQuestion,
   };
+  if (raw.durationMinutes === null || (Number.isFinite(raw.durationMinutes) && raw.durationMinutes > 0)) {
+    out.durationMinutes = raw.durationMinutes;
+  }
+  if (Number.isFinite(raw.activeElapsedMs) && raw.activeElapsedMs >= 0) {
+    out.activeElapsedMs = raw.activeElapsedMs;
+  }
+  if (Number.isFinite(raw.pausedTotalMs) && raw.pausedTotalMs >= 0) {
+    out.pausedTotalMs = raw.pausedTotalMs;
+  }
+  if (Number.isInteger(raw.pauseCount) && raw.pauseCount >= 0) {
+    out.pauseCount = raw.pauseCount;
+  }
+  return out;
 }
 
 /** بازسازی ایمن یک آزمون از دادهٔ خام؛ در صورت خراب بودن null برمی‌گرداند */
@@ -203,16 +216,19 @@ export function sanitizeExam(raw) {
   let pausedAt = Number.isFinite(raw.pausedAt) ? raw.pausedAt : null;
 
   if (pausedAt != null) {
-    const validPause =
-      durationMinutes != null && status === STATUS.IN_PROGRESS && startedAt != null && pausedAt >= startedAt;
+    const validPause = status === STATUS.IN_PROGRESS && startedAt != null && pausedAt >= startedAt;
     if (validPause) {
       pausedTotalMs = Math.max(0, pausedTotalMs);
       pauseCount = Math.max(1, pauseCount);
     } else {
-      // توقف بی‌معنا (آزمون تمام‌شده، بدون شروع یا بدون تایمر) پاک می‌شود تا قفل/تایمر خراب نشود
+      // توقف بی‌معنا (آزمون تمام‌شده یا بدون شروع) پاک می‌شود تا قفل/تایمر خراب نشود
       pausedAt = null;
     }
   }
+
+  const finished = status === STATUS.GRADED || status === STATUS.AWAITING_GRADING || status === STATUS.TIME_UP;
+  const elapsedMs =
+    finished && Number.isFinite(raw.elapsedMs) && raw.elapsedMs >= 0 ? raw.elapsedMs : null;
 
   return {
     id,
@@ -224,7 +240,8 @@ export function sanitizeExam(raw) {
     status,
     createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : Date.now(),
     startedAt,
-    endedAt: status === STATUS.GRADED || status === STATUS.AWAITING_GRADING || status === STATUS.TIME_UP ? endedAt : null,
+    endedAt: finished ? endedAt : null,
+    elapsedMs,
     gradedAt: Number.isFinite(raw.gradedAt) ? raw.gradedAt : null,
     pausedAt,
     pausedTotalMs,

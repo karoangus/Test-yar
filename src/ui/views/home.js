@@ -13,7 +13,12 @@ import {
   formatAnswerCount,
 } from '../../core/format.js';
 import { STATUS, PHASE, currentPhase, startNumberOf, isAutoGradeReady, isTimed } from '../../core/model.js';
-import { remainingSeconds, pauseDurationMs } from '../../core/timer.js';
+import {
+  remainingSeconds,
+  activeElapsedSeconds,
+  recordedElapsedSeconds,
+  pauseDurationMs,
+} from '../../core/timer.js';
 import { canInstall, onInstallAvailable, promptInstall } from '../pwa.js';
 import { toggleTheme, getResolvedTheme, onThemeChange } from '../theme.js';
 
@@ -184,23 +189,20 @@ export function homeView({ rootEl, store, navigate }) {
     );
   }
 
-  /** به‌روزرسانی زندهٔ تایمر آزمون در حال انجام (بدون رندر کامل) */
+  /** به‌روزرسانی زندهٔ تایمر/کرنومتر آزمون در حال انجام (بدون رندر کامل) */
   function refreshDynamic() {
     const now = Date.now();
-    // تایمر کوچک روی کارت‌های فهرست
+    // تایمر/کرنومتر کوچک روی کارت‌های فهرست
     for (const el of container.querySelectorAll('[data-remaining]')) {
       const exam = store.get(el.dataset.remaining ?? '');
       if (!exam) continue;
-      if (!isTimed(exam)) {
-        el.textContent = 'بدون زمان';
-        continue;
-      }
       const phase = currentPhase(exam, now);
+      const secs = isTimed(exam) ? remainingSeconds(exam, now) : activeElapsedSeconds(exam, now);
       el.textContent =
         phase === PHASE.RUNNING
-          ? `⏱ ${formatClock(remainingSeconds(exam, now))}`
+          ? `⏱ ${formatClock(secs)}`
           : phase === PHASE.PAUSED
-            ? `⏸ ${formatClock(remainingSeconds(exam, now))}`
+            ? `⏸ ${formatClock(secs)}`
             : 'زمان تمام شد';
     }
 
@@ -208,20 +210,15 @@ export function homeView({ rootEl, store, navigate }) {
     if (!live) return;
     const exam = store.get(live.dataset.examId ?? '');
     if (!exam) return;
-    if (!isTimed(exam)) {
-      live.textContent = 'بدون زمان';
-      live.classList.remove('timer-paused', 'timer-locked');
-      return;
-    }
     const phase = currentPhase(exam, now);
     if (phase === PHASE.EXPIRED) {
       live.textContent = 'زمان تمام شد';
       live.classList.add('timer-locked');
       return;
     }
+    const secs = isTimed(exam) ? remainingSeconds(exam, now) : activeElapsedSeconds(exam, now);
     live.classList.toggle('timer-paused', phase === PHASE.PAUSED);
-    live.textContent =
-      phase === PHASE.PAUSED ? `⏸ ${formatClock(remainingSeconds(exam, now))}` : `⏱ ${formatClock(remainingSeconds(exam, now))}`;
+    live.textContent = phase === PHASE.PAUSED ? `⏸ ${formatClock(secs)}` : `⏱ ${formatClock(secs)}`;
     const pauseNote = container.querySelector('[data-pause-note]');
     if (pauseNote) {
       const total = pauseDurationMs(exam, now);
@@ -264,12 +261,8 @@ export function homeView({ rootEl, store, navigate }) {
         h(
           'div',
           { class: 'running-hero-side' },
-          h(
-            'span',
-            { class: 'sheet-timer', dataset: { liveTimer: '1', examId: exam.id } },
-            timed ? '⏱ --:--' : 'بدون زمان',
-          ),
-          h('span', { class: 'running-hero-side-label' }, timed ? 'زمان باقی‌مانده' : 'پایان دستی'),
+          h('span', { class: 'sheet-timer', dataset: { liveTimer: '1', examId: exam.id } }, '⏱ --:--'),
+          h('span', { class: 'running-hero-side-label' }, timed ? 'زمان باقی‌مانده' : 'زمان سپری‌شده (کرنومتر)'),
         ),
       ),
       h('p', { class: 'running-hero-note', dataset: { pauseNote: '1' }, hidden: true }),
@@ -281,33 +274,31 @@ export function homeView({ rootEl, store, navigate }) {
           { class: 'btn btn-primary', onClick: () => navigate(`/exam/${exam.id}`) },
           paused ? 'بازگشت به آزمون' : 'ادامهٔ آزمون',
         ),
-        timed
-          ? paused
-            ? h(
-                'button',
-                {
-                  class: 'btn btn-ghost',
-                  onClick: () => {
-                    store.resumeExam(exam.id);
-                    toast('تایمر آزمون از سر گرفته شد.', 'success');
-                  },
+        paused
+          ? h(
+              'button',
+              {
+                class: 'btn btn-ghost',
+                onClick: () => {
+                  store.resumeExam(exam.id);
+                  toast('تایمر آزمون از سر گرفته شد.', 'success');
                 },
-                icon('play', 16),
-                ' ادامهٔ تایمر',
-              )
-            : h(
-                'button',
-                {
-                  class: 'btn btn-ghost',
-                  onClick: () => {
-                    store.pauseExam(exam.id);
-                    toast('تایمر آزمون متوقف شد.', 'info');
-                  },
+              },
+              icon('play', 16),
+              ' ادامهٔ تایمر',
+            )
+          : h(
+              'button',
+              {
+                class: 'btn btn-ghost',
+                onClick: () => {
+                  store.pauseExam(exam.id);
+                  toast('تایمر آزمون متوقف شد.', 'info');
                 },
-                icon('pause', 16),
-                ' توقف تایمر',
-              )
-          : null,
+              },
+              icon('pause', 16),
+              ' توقف تایمر',
+            ),
       ),
     );
   }
@@ -315,6 +306,11 @@ export function homeView({ rootEl, store, navigate }) {
   function examCard(exam) {
     const graded = exam.status === STATUS.GRADED && exam.result;
     const start = startNumberOf(exam);
+    const recordedSecs = recordedElapsedSeconds(exam);
+    const durationText =
+      !isTimed(exam) && recordedSecs != null
+        ? `بدون زمان · ${formatSeconds(recordedSecs)}`
+        : formatDuration(exam.durationMinutes);
     const tone =
       exam.status === STATUS.GRADED
         ? 'is-graded'
@@ -330,7 +326,7 @@ export function homeView({ rootEl, store, navigate }) {
       start > 1 ? h('span', { class: 'dot' }, '·') : null,
       h('span', null, `${formatNumber(exam.questionCount)} سوال`),
       h('span', { class: 'dot' }, '·'),
-      h('span', null, formatDuration(exam.durationMinutes)),
+      h('span', null, durationText),
       h('span', { class: 'dot' }, '·'),
       h('span', null, formatRelativeTime(exam.createdAt)),
     );

@@ -18,10 +18,11 @@ import {
   formatDateTime,
   formatRelativeTime,
   formatClock,
+  formatSeconds,
   formatRange,
 } from '../../core/format.js';
 import { STATUS, PHASE, currentPhase, isAutoGradeReady, isTimed } from '../../core/model.js';
-import { remainingSeconds } from '../../core/timer.js';
+import { remainingSeconds, activeElapsedSeconds, recordedElapsedSeconds } from '../../core/timer.js';
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'همه' },
@@ -197,18 +198,16 @@ export function historyView({ rootEl, store, navigate }) {
     for (const el of container.querySelectorAll('[data-history-timer]')) {
       const exam = store.get(el.dataset.examId ?? '');
       if (!exam) continue;
-      if (!isTimed(exam)) {
-        el.textContent = 'بدون زمان';
-        continue;
-      }
       const phase = currentPhase(exam, now);
-      if (phase === PHASE.RUNNING) el.textContent = `⏱ ${formatClock(remainingSeconds(exam, now))}`;
-      else if (phase === PHASE.PAUSED) el.textContent = `⏸ ${formatClock(remainingSeconds(exam, now))}`;
+      const secs = isTimed(exam) ? remainingSeconds(exam, now) : activeElapsedSeconds(exam, now);
+      if (phase === PHASE.RUNNING) el.textContent = `⏱ ${formatClock(secs)}`;
+      else if (phase === PHASE.PAUSED) el.textContent = `⏸ ${formatClock(secs)}`;
       else el.textContent = 'زمان تمام شد';
     }
   }
 
   function historyCard(exam) {
+    const recordedSecs = recordedElapsedSeconds(exam);
     const rows = [
       ['دسته‌بندی', exam.category],
       ['تاریخ ایجاد', `${formatDateTime(exam.createdAt)} · ${formatRelativeTime(exam.createdAt)}`],
@@ -216,6 +215,9 @@ export function historyView({ rootEl, store, navigate }) {
       ['شمارهٔ سوال‌ها', formatRange(exam.startNumber, exam.questionCount)],
       ['زمان', formatDuration(exam.durationMinutes)],
     ];
+    if (recordedSecs != null) {
+      rows.push(['زمان صرف‌شده', formatSeconds(recordedSecs)]);
+    }
     if (exam.result) {
       rows.push(
         ['درست', formatNumber(exam.result.correct)],
@@ -231,7 +233,7 @@ export function historyView({ rootEl, store, navigate }) {
         rows.push(['وضعیت تایمر', exam.pausedAt != null ? 'متوقف' : 'در حال اجرا']);
         rows.push(['تعداد توقف‌ها', formatNumber(exam.pauseCount ?? 0)]);
       } else {
-        rows.push(['وضعیت تایمر', 'بدون زمان']);
+        rows.push(['وضعیت تایمر', exam.pausedAt != null ? 'کرنومتر متوقف' : 'کرنومتر در حال اجرا']);
       }
     }
     if (exam.keyOrigin) {

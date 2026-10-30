@@ -193,6 +193,7 @@ export function createExam(input, now = Date.now()) {
     createdAt: now,
     startedAt: null,
     endedAt: null,
+    elapsedMs: null,      // زمان فعال ثبت‌شده در پایان آزمون (به‌ویژه کرنومتر در آزمون بدون زمان)
     gradedAt: null,
     pausedAt: null,       // لحظهٔ شروع توقف جاری
     pausedTotalMs: 0,     // مجموع توقف‌های تمام‌شده

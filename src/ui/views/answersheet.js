@@ -4,7 +4,13 @@ import { h, clearEl, scrollToEl, srOnly } from '../dom.js';
 import { onTick, confirmDialog, toast, icon, kbd } from '../components.js';
 import { OPTIONS, optionTitle } from '../../core/scoring.js';
 import { canAnswer, currentPhase, PHASE, startNumberOf, isAutoGradeReady, isTimed } from '../../core/model.js';
-import { remainingSeconds, isExpired, elapsedRatio, pauseDurationMs } from '../../core/timer.js';
+import {
+  remainingSeconds,
+  activeElapsedSeconds,
+  isExpired,
+  elapsedRatio,
+  pauseDurationMs,
+} from '../../core/timer.js';
 import {
   formatNumber,
   formatClock,
@@ -47,7 +53,15 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
     const autoGrade = isAutoGradeReady(current);
     lastPhase = phase;
 
-    const clockEl = h('span', { class: 'sheet-timer', dataset: { clock: '1' } }, '');
+    const clockEl = h(
+      'span',
+      {
+        class: 'sheet-timer',
+        dataset: { clock: '1', ...(timed ? {} : { stopwatch: '1' }) },
+        attrs: { title: timed ? 'زمان باقی‌مانده' : 'کرنومتر · زمان سپری‌شده' },
+      },
+      '',
+    );
     const answersFill = h('div', { class: 'progress-fill' });
     const timeFill = h('div', { class: 'progress-fill time-fill' });
     const progressLabel = h('span', { class: 'sheet-sub', dataset: { progressLabel: '1' } }, '');
@@ -180,12 +194,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
       'پایان آزمون',
     );
 
-    const footer = h(
-      'div',
-      { class: 'sheet-footer' },
-      countEl,
-      h('div', { class: 'sheet-footer-actions' }, ...(timed ? [pauseBtn] : []), endBtn),
-    );
+    const footer = h('div', { class: 'sheet-footer' }, countEl, h('div', { class: 'sheet-footer-actions' }, pauseBtn, endBtn));
 
     container.append(top, h('main', { class: 'page sheet-page' }, navigator, list), footer);
 
@@ -199,23 +208,21 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
       isDisabled: () => !canAnswer(store.get(exam.id), Date.now()),
     });
 
-    // ── تیکر: نمایش زمان واقعی (فقط برای آزمون‌های زمان‌دار) ──
-    if (timed) {
-      tickerCleanup = onTick(() => {
-        const t = Date.now();
-        const fresh = store.get(exam.id);
-        if (!fresh) return;
-        if (canAnswer(fresh, t)) {
-          if (isExpired(fresh, t)) {
-            store.refresh(); // وضعیت به time_up می‌رود → emit → رندر مجدد با overlay
-            return;
-          }
-          refreshDynamic(fresh, t);
-        } else if (currentPhase(fresh, t) === PHASE.PAUSED) {
-          refreshDynamic(fresh, t);
+    // ── تیکر: نمایش زمان واقعی (شمارش معکوس تایمر یا شمارش رو به بالای کرنومتر) ──
+    tickerCleanup = onTick(() => {
+      const t = Date.now();
+      const fresh = store.get(exam.id);
+      if (!fresh) return;
+      if (canAnswer(fresh, t)) {
+        if (isExpired(fresh, t)) {
+          store.refresh(); // وضعیت به time_up می‌رود → emit → رندر مجدد با overlay
+          return;
         }
-      });
-    }
+        refreshDynamic(fresh, t);
+      } else if (currentPhase(fresh, t) === PHASE.PAUSED) {
+        refreshDynamic(fresh, t);
+      }
+    });
   }
 
   /** به‌روزرسانی درجای زمان/شمارنده‌ها بدون رندر کامل (حفظ اسکرول) */
@@ -223,19 +230,15 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
     const locked = !canAnswer(current, now);
     const paused = currentPhase(current, now) === PHASE.PAUSED;
     const timed = isTimed(current);
-    const secs = remainingSeconds(current, now);
+    const secs = timed ? remainingSeconds(current, now) : activeElapsedSeconds(current, now);
 
     const clockEl = container.querySelector('[data-clock]');
     if (clockEl) {
-      if (!timed) {
-        clockEl.textContent = 'بدون زمان';
-        clockEl.classList.remove('timer-danger', 'timer-paused', 'timer-locked');
-      } else {
-        clockEl.textContent = paused ? `⏸ ${formatClock(secs)}` : `⏱ ${formatClock(secs)}`;
-        clockEl.classList.toggle('timer-danger', secs <= 60 && !locked && !paused);
-        clockEl.classList.toggle('timer-paused', paused);
-        clockEl.classList.toggle('timer-locked', locked);
-      }
+      clockEl.textContent = paused ? `⏸ ${formatClock(secs)}` : `⏱ ${formatClock(secs)}`;
+      clockEl.classList.toggle('timer-danger', timed && secs <= 60 && !locked && !paused);
+      clockEl.classList.toggle('timer-paused', paused);
+      clockEl.classList.toggle('timer-locked', locked);
+      clockEl.classList.toggle('timer-stopwatch', !timed);
     }
 
     const answered = Object.keys(current.answers).length;

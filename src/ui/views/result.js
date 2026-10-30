@@ -15,6 +15,7 @@ import {
 } from '../../core/format.js';
 import { optionLabel, QUESTION_STATUS } from '../../core/scoring.js';
 import { startNumberOf, isTimed } from '../../core/model.js';
+import { recordedElapsedMs } from '../../core/timer.js';
 import { formatRange } from '../../core/format.js';
 
 const REVIEW_FILTERS = [
@@ -95,11 +96,8 @@ export function resultView({ rootEl, store, navigate, exam }) {
 
     const timed = isTimed(current);
     const durationMs = timed ? Number(current.result.durationMinutes ?? current.durationMinutes) * 60_000 : 0;
-    const activeMs = Number.isFinite(current.result.activeElapsedMs)
-      ? current.result.activeElapsedMs
-      : current.endedAt != null && current.startedAt != null
-        ? Math.max(0, current.endedAt - current.startedAt)
-        : durationMs;
+    const recordedMs = recordedElapsedMs(current);
+    const activeMs = recordedMs != null ? recordedMs : durationMs;
 
     const timeRows = timed
       ? [
@@ -112,8 +110,14 @@ export function resultView({ rootEl, store, navigate, exam }) {
           ['تعداد توقف‌ها', formatNumber(current.result.pauseCount ?? 0)],
         ]
       : [
-          ['زمان کل آزمون', formatDuration(null)],
+          ['زمان کل آزمون', 'بدون زمان (کرنومتر)'],
           ['زمان فعال پاسخ‌گویی', formatSeconds(activeMs / 1000)],
+          ...(current.result.pausedTotalMs > 0
+            ? [
+                ['مجموع توقف تایمر', formatSeconds(current.result.pausedTotalMs / 1000)],
+                ['تعداد توقف‌ها', formatNumber(current.result.pauseCount ?? 0)],
+              ]
+            : []),
         ];
 
     const reviewList = h('ul', { class: 'review-list' }, reviewRows);
