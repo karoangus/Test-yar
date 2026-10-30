@@ -409,3 +409,44 @@ test('آزمون بدون شمارهٔ شروع (دادهٔ قدیمی) با ش�
   const store = createAppStore({ storage: backend, now: () => T0 });
   assert.equal(store.get('old-1').startNumber, 1);
 });
+
+test('آزمون بدون زمان: با گذر زمان منقضی نمی‌شود و هر زمان کاربر تمام کرد به پایان می‌رسد', () => {
+  const clock = { value: T0 };
+  const { backend, store } = makeStore(clock);
+  const exam = store.addExam({ name: 'آزمون آزاد', questionCount: 3, durationMinutes: '', category: 'عربی' });
+  assert.equal(exam.durationMinutes, null);
+
+  store.startExam(exam.id);
+  store.setAnswer(exam.id, 0, 'A');
+
+  // حتی پس از گذشت چند ساعت و بازگشایی برنامه، آزمون منقضی نمی‌شود
+  clock.value = T0 + 5 * 3600_000;
+  store.refresh();
+  assert.equal(store.get(exam.id).status, STATUS.IN_PROGRESS);
+  assert.equal(store.remainingMs(exam.id), null);
+
+  const reopened = createAppStore({ storage: backend, now: () => clock.value });
+  assert.equal(reopened.get(exam.id).status, STATUS.IN_PROGRESS);
+
+  // هنوز می‌توان پاسخ داد
+  reopened.setAnswer(exam.id, 1, 'B');
+  // آزمون بدون تایمر توقف تایمر ندارد
+  assert.throws(() => reopened.pauseExam(exam.id), DomainError);
+
+  // پایان دستی توسط کاربر
+  const ended = reopened.endExamManually(exam.id);
+  assert.equal(ended.status, STATUS.AWAITING_GRADING);
+  assert.equal(ended.endedAt, clock.value);
+
+  reopened.setKeyEntry(exam.id, 0, 'A');
+  reopened.setKeyEntry(exam.id, 1, 'B');
+  reopened.setKeyEntry(exam.id, 2, 'C');
+  const graded = reopened.finishGrading(exam.id);
+  assert.equal(graded.ok, true);
+  assert.equal(graded.result.durationMinutes, null);
+  assert.equal(graded.result.activeElapsedMs, 5 * 3600_000);
+
+  // تکرار آزمون بدون زمان، آزمون بدون زمان تازه می‌سازد
+  const copy = reopened.duplicateExam(exam.id);
+  assert.equal(copy.durationMinutes, null);
+});

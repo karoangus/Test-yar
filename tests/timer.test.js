@@ -111,3 +111,15 @@ test('آزمون متوقف هرگز منقضی نمی‌شود', () => {
   assert.equal(scheduledEndOfExam(paused), T0 + 60_000);
   assert.equal(effectiveEndsAt(paused), T0 + 60_000);
 });
+
+test('آزمون بدون زمان: زمان پایان ندارد و هرگز منقضی نمی‌شود، اما زمان فعال را می‌شمارد', () => {
+  const untimed = exam({ durationMinutes: null });
+  assert.equal(scheduledEndsAt(T0, null), null);
+  assert.equal(scheduledEndOfExam(untimed), null);
+  assert.equal(effectiveEndsAt(untimed), null);
+  assert.equal(remainingMs(untimed, T0 + 999_999), null);
+  assert.equal(remainingSeconds(untimed, T0 + 999_999), null);
+  assert.equal(isExpired(untimed, T0 + 999_999_999), false);
+  assert.equal(elapsedRatio(untimed, T0 + 999_999), 0);
+  assert.equal(activeElapsedSeconds(untimed, T0 + 125_000), 125);
+});

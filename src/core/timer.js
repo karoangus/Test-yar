@@ -12,10 +12,17 @@
 
 export const MINUTE_MS = 60_000;
 
-/** مدت کل آزمون به میلی‌ثانیه */
-export function durationMs(exam) {
+/** آیا آزمون دارای محدودیت زمانی (تایمر) است؟ خالی بودن زمان یعنی بدون تایمر */
+export function isTimed(exam) {
   const minutes = Number(exam?.durationMinutes);
-  return Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * MINUTE_MS) : 0;
+  return exam?.durationMinutes != null && Number.isFinite(minutes) && minutes > 0;
+}
+
+/** مدت کل آزمون به میلی‌ثانیه (برای آزمون بدون زمان: ۰) */
+export function durationMs(exam) {
+  if (!isTimed(exam)) return 0;
+  const minutes = Number(exam.durationMinutes);
+  return Math.round(minutes * MINUTE_MS);
 }
 
 /** مجموع توقف‌های تمام‌شده (همیشه عددی و نامنفی) */
@@ -32,17 +39,20 @@ export function isPaused(exam) {
 
 /**
  * زمان پایان برنامه‌ریزی‌شدهٔ آزمون (timestamp مطلق).
+ * اگر زمان آزمون خالی باشد (`null`)، پایان برنامه‌ریزی‌شده وجود ندارد و `null` برمی‌گردد.
  * `extraPausedMs` مجموع زمان‌هایی است که آزمون متوقف بوده و به مهلت اضافه می‌شود.
  */
 export function scheduledEndsAt(startedAt, durationMinutes, extraPausedMs = 0) {
-  const base = Math.round(Number(durationMinutes) * MINUTE_MS);
+  const minutes = Number(durationMinutes);
+  if (durationMinutes == null || !Number.isFinite(minutes) || minutes <= 0) return null;
+  const base = Math.round(minutes * MINUTE_MS);
   const extra = Number.isFinite(extraPausedMs) && extraPausedMs > 0 ? extraPausedMs : 0;
   return startedAt + base + extra;
 }
 
-/** زمان پایان برنامه‌ریزی‌شدهٔ یک آزمون (یا null اگر هنوز شروع نشده باشد) */
+/** زمان پایان برنامه‌ریزی‌شدهٔ یک آزمون (یا null اگر شروع نشده یا بدون زمان باشد) */
 export function scheduledEndOfExam(exam) {
-  if (exam?.startedAt == null) return null;
+  if (exam?.startedAt == null || !isTimed(exam)) return null;
   return scheduledEndsAt(exam.startedAt, exam.durationMinutes, pausedTotalMs(exam));
 }
 
@@ -58,24 +68,27 @@ export function anchorNow(exam, now) {
 /**
  * مهلت مؤثر پایان آزمون: اگر کاربر زودتر دستی تمام کرده باشد، همان لحظهٔ
  * پایان دستی؛ در غیر این صورت پایان برنامه‌ریزی‌شده (با احتساب توقف‌ها).
+ * برای آزمون بدون زمان که هنوز تمام نشده است، `null` برمی‌گردد.
  */
 export function effectiveEndsAt(exam) {
   const scheduled = scheduledEndOfExam(exam);
-  if (scheduled == null) return null;
+  if (scheduled == null) return exam?.endedAt ?? null;
   if (exam.endedAt != null) return Math.min(scheduled, exam.endedAt);
   return scheduled;
 }
 
-/** میلی‌ثانیهٔ باقی‌مانده (هرگز منفی نمی‌شود و در حین توقف فریز است) */
+/** میلی‌ثانیهٔ باقی‌مانده (برای آزمون بدون زمان: null؛ در غیر این صورت هرگز منفی نمی‌شود) */
 export function remainingMs(exam, now) {
+  if (!isTimed(exam)) return null;
   if (exam.startedAt == null) return durationMs(exam);
   const endsAt = effectiveEndsAt(exam);
   return Math.max(0, endsAt - anchorNow(exam, now));
 }
 
-/** آیا زمان آزمون (بر اساس ساعت واقعی) تمام شده است؟ در حین توقف هرگز */
+/** آیا زمان آزمون (بر اساس ساعت واقعی) تمام شده است؟ در آزمون بدون زمان یا حین توقف هرگز */
 export function isExpired(exam, now) {
-  if (exam.startedAt == null) return false;
+  if (exam?.startedAt == null) return false;
+  if (!isTimed(exam)) return false;
   if (isPaused(exam)) return false;
   return now >= effectiveEndsAt(exam);
 }
@@ -85,13 +98,14 @@ export function isExpired(exam, now) {
  * در حالت توقف فریز می‌شود.
  */
 export function activeElapsedMs(exam, now) {
-  if (exam.startedAt == null) return 0;
+  if (exam?.startedAt == null) return 0;
   const anchor = anchorNow(exam, now);
   return Math.max(0, anchor - exam.startedAt - pausedTotalMs(exam));
 }
 
-/** نسبت زمان سپری‌شده بین ۰ تا ۱ (برای نوار پیشرفت زمان) */
+/** نسبت زمان سپری‌شده بین ۰ تا ۱ (برای نوار پیشرفت زمان؛ در آزمون بدون زمان: ۰) */
 export function elapsedRatio(exam, now) {
+  if (!isTimed(exam)) return 0;
   const total = durationMs(exam);
   if (total <= 0) return 1;
   return Math.min(1, Math.max(0, activeElapsedMs(exam, now) / total));
@@ -108,9 +122,10 @@ export function pauseDurationMs(exam, now) {
   return base + Math.max(0, now - Number(exam.pausedAt));
 }
 
-/** ثانیه‌های باقی‌مانده برای نمایش mm:ss — همیشه از clock واقعی */
+/** ثانیه‌های باقی‌مانده برای نمایش mm:ss — همیشه از clock واقعی (برای آزمون بدون زمان: null) */
 export function remainingSeconds(exam, now) {
-  return Math.ceil(remainingMs(exam, now) / 1000);
+  const ms = remainingMs(exam, now);
+  return ms == null ? null : Math.ceil(ms / 1000);
 }
 
 /** زمان صرف‌شده روی آزمون به ثانیه (بدون توقف‌ها) */

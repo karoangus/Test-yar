@@ -3,8 +3,8 @@
 import { h, clearEl, scrollToEl, srOnly } from '../dom.js';
 import { onTick, confirmDialog, toast, icon, kbd } from '../components.js';
 import { OPTIONS, optionTitle } from '../../core/scoring.js';
-import { canAnswer, currentPhase, PHASE, startNumberOf, isAutoGradeReady } from '../../core/model.js';
-import { remainingSeconds, effectiveEndsAt, elapsedRatio, pauseDurationMs } from '../../core/timer.js';
+import { canAnswer, currentPhase, PHASE, startNumberOf, isAutoGradeReady, isTimed } from '../../core/model.js';
+import { remainingSeconds, isExpired, elapsedRatio, pauseDurationMs } from '../../core/timer.js';
 import {
   formatNumber,
   formatClock,
@@ -42,6 +42,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
     const phase = currentPhase(current, now);
     const locked = !canAnswer(current, now);
     const paused = phase === PHASE.PAUSED;
+    const timed = isTimed(current);
     const start = startNumberOf(current);
     const autoGrade = isAutoGradeReady(current);
     lastPhase = phase;
@@ -84,7 +85,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
         h('span', { class: 'sheet-shortcuts' }, kbd('۱'), kbd('۲'), kbd('۳'), kbd('۴'), srOnly('میان‌بُرهای کیبورد برای انتخاب گزینه')),
       ),
       h('div', { class: 'progress' }, answersFill),
-      h('div', { class: 'progress progress-thin' }, timeFill),
+      timed ? h('div', { class: 'progress progress-thin' }, timeFill) : null,
     );
 
     // ── ناوش سوال‌ها ──
@@ -179,7 +180,12 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
       'پایان آزمون',
     );
 
-    const footer = h('div', { class: 'sheet-footer' }, countEl, h('div', { class: 'sheet-footer-actions' }, pauseBtn, endBtn));
+    const footer = h(
+      'div',
+      { class: 'sheet-footer' },
+      countEl,
+      h('div', { class: 'sheet-footer-actions' }, ...(timed ? [pauseBtn] : []), endBtn),
+    );
 
     container.append(top, h('main', { class: 'page sheet-page' }, navigator, list), footer);
 
@@ -193,35 +199,43 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
       isDisabled: () => !canAnswer(store.get(exam.id), Date.now()),
     });
 
-    // ── تیکر: نمایش زمان واقعی ──
-    tickerCleanup = onTick(() => {
-      const t = Date.now();
-      const fresh = store.get(exam.id);
-      if (!fresh) return;
-      if (canAnswer(fresh, t)) {
-        if (t >= effectiveEndsAt(fresh)) {
-          store.refresh(); // وضعیت به time_up می‌رود → emit → رندر مجدد با overlay
-          return;
+    // ── تیکر: نمایش زمان واقعی (فقط برای آزمون‌های زمان‌دار) ──
+    if (timed) {
+      tickerCleanup = onTick(() => {
+        const t = Date.now();
+        const fresh = store.get(exam.id);
+        if (!fresh) return;
+        if (canAnswer(fresh, t)) {
+          if (isExpired(fresh, t)) {
+            store.refresh(); // وضعیت به time_up می‌رود → emit → رندر مجدد با overlay
+            return;
+          }
+          refreshDynamic(fresh, t);
+        } else if (currentPhase(fresh, t) === PHASE.PAUSED) {
+          refreshDynamic(fresh, t);
         }
-        refreshDynamic(fresh, t);
-      } else if (currentPhase(fresh, t) === PHASE.PAUSED) {
-        refreshDynamic(fresh, t);
-      }
-    });
+      });
+    }
   }
 
   /** به‌روزرسانی درجای زمان/شمارنده‌ها بدون رندر کامل (حفظ اسکرول) */
   function refreshDynamic(current, now) {
     const locked = !canAnswer(current, now);
     const paused = currentPhase(current, now) === PHASE.PAUSED;
+    const timed = isTimed(current);
     const secs = remainingSeconds(current, now);
 
     const clockEl = container.querySelector('[data-clock]');
     if (clockEl) {
-      clockEl.textContent = paused ? `⏸ ${formatClock(secs)}` : `⏱ ${formatClock(secs)}`;
-      clockEl.classList.toggle('timer-danger', secs <= 60 && !locked && !paused);
-      clockEl.classList.toggle('timer-paused', paused);
-      clockEl.classList.toggle('timer-locked', locked);
+      if (!timed) {
+        clockEl.textContent = 'بدون زمان';
+        clockEl.classList.remove('timer-danger', 'timer-paused', 'timer-locked');
+      } else {
+        clockEl.textContent = paused ? `⏸ ${formatClock(secs)}` : `⏱ ${formatClock(secs)}`;
+        clockEl.classList.toggle('timer-danger', secs <= 60 && !locked && !paused);
+        clockEl.classList.toggle('timer-paused', paused);
+        clockEl.classList.toggle('timer-locked', locked);
+      }
     }
 
     const answered = Object.keys(current.answers).length;
@@ -236,7 +250,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
     const answersFill = container.querySelector('.progress-fill:not(.time-fill)');
     if (answersFill) answersFill.style.width = `${(answered / total) * 100}%`;
     const timeFill = container.querySelector('.time-fill');
-    if (timeFill) {
+    if (timeFill && timed) {
       timeFill.style.width = `${elapsedRatio(current, now) * 100}%`;
       timeFill.classList.toggle('time-fill-danger', secs <= 60 && !locked && !paused);
     }

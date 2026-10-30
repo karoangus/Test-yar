@@ -21,7 +21,15 @@ import {
   PHASE,
 } from './model.js';
 import { normalizeDigits, toFa } from './format.js';
-import { scheduledEndsAt, isExpired, isPaused, pausedTotalMs, remainingMs, activeElapsedMs } from './timer.js';
+import {
+  scheduledEndsAt,
+  isExpired,
+  isPaused,
+  isTimed,
+  pausedTotalMs,
+  remainingMs,
+  activeElapsedMs,
+} from './timer.js';
 import { computeResults, findMissingKeys, isValidOption, findUnanswered } from './scoring.js';
 import {
   createStorageAdapter,
@@ -145,6 +153,7 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
       answers: exam.answers,
       key: exam.key,
     });
+    const elapsed = activeElapsedMs(exam, exam.endedAt ?? at);
     exam.status = STATUS.GRADED;
     exam.gradedAt = at;
     exam.pausedAt = null;
@@ -158,7 +167,7 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
       perQuestion: results.perQuestion,
       // آمار زمان (بدون توقف‌ها) برای صفحهٔ نتیجه
       durationMinutes: exam.durationMinutes,
-      activeElapsedMs: Math.min(activeElapsedMs(exam, exam.endedAt ?? at), exam.durationMinutes * 60_000),
+      activeElapsedMs: isTimed(exam) ? Math.min(elapsed, exam.durationMinutes * 60_000) : elapsed,
       pausedTotalMs: pausedTotalMs(exam),
       pauseCount: exam.pauseCount ?? 0,
     };
@@ -390,6 +399,9 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
           if (exam.status !== STATUS.IN_PROGRESS) {
             throw new DomainError('فقط آزمون در حال برگزاری را می‌توان متوقف کرد.');
           }
+          if (!isTimed(exam)) {
+            throw new DomainError('این آزمون بدون زمان است و تایمر ندارد.');
+          }
           if (isPaused(exam)) throw new DomainError('تایمر آزمون از قبل متوقف است.');
           if (isExpired(exam, t)) throw new DomainError('زمان آزمون تمام شده است.');
           exam.pausedAt = Math.max(t, exam.startedAt);
@@ -426,7 +438,8 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
             exam.pausedTotalMs = pausedTotalMs(exam) + Math.max(0, t - exam.pausedAt);
             exam.pausedAt = null;
           }
-          exam.endedAt = Math.min(t, scheduledEndsAt(exam.startedAt, exam.durationMinutes, pausedTotalMs(exam)));
+          const scheduled = scheduledEndsAt(exam.startedAt, exam.durationMinutes, pausedTotalMs(exam));
+          exam.endedAt = scheduled != null ? Math.min(t, scheduled) : Math.max(t, exam.startedAt ?? t);
           // کلید به‌ارث‌رسیده و کامل → بدون توقف در تصحیح‌کننده، مستقیم کارنامه
           if (isAutoGradeReady(exam)) applyGrade(exam, t);
           else exam.status = STATUS.AWAITING_GRADING;
