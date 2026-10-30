@@ -2,7 +2,7 @@
 
 import { h, clearEl, scrollToEl, srOnly } from '../dom.js';
 import { toast, icon, kbd, segmented } from '../components.js';
-import { OPTIONS, optionLabel, optionTitle, findMissingKeys } from '../../core/scoring.js';
+import { OPTIONS, optionTitle, findMissingKeys } from '../../core/scoring.js';
 import { STATUS, startNumberOf } from '../../core/model.js';
 import { formatNumber, formatQuestionNo, formatRange, formatAnswerCount } from '../../core/format.js';
 import { attachQuestionShortcuts } from '../keyboard.js';
@@ -206,7 +206,6 @@ export function correctorView({ rootEl, store, navigate, exam }) {
 
     function keyCard(currentExam, index, start) {
       const selectedKey = currentExam.key[index] ?? null;
-      const userAnswer = currentExam.answers[index] ?? null;
       const optionBtns = OPTIONS.map((opt) =>
         h(
           'button',
@@ -229,11 +228,6 @@ export function correctorView({ rootEl, store, navigate, exam }) {
           'div',
           { class: 'q-head' },
           h('h3', { class: 'q-title' }, formatQuestionNo(index, start)),
-          h(
-            'span',
-            { class: `user-note ${userAnswer ? '' : 'user-note-empty'}` },
-            userAnswer ? `پاسخ دانش‌آموز: ${optionLabel(userAnswer)}` : 'پاسخ دانش‌آموز: نزده',
-          ),
           h(
             'button',
             {
