@@ -115,6 +115,7 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
         exam.status = STATUS.TIME_UP;
         exam.pausedAt = null;
         exam.endedAt = scheduledEndsAt(exam.startedAt, exam.durationMinutes, pausedTotalMs(exam));
+        exam.elapsedMs = activeElapsedMs(exam, exam.endedAt);
         changed = true;
       }
     }
@@ -153,7 +154,11 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
       answers: exam.answers,
       key: exam.key,
     });
-    const elapsed = activeElapsedMs(exam, exam.endedAt ?? at);
+    const rawElapsed = Number.isFinite(exam.elapsedMs)
+      ? exam.elapsedMs
+      : activeElapsedMs(exam, exam.endedAt ?? at);
+    const activeMs = isTimed(exam) ? Math.min(rawElapsed, exam.durationMinutes * 60_000) : rawElapsed;
+    exam.elapsedMs = activeMs;
     exam.status = STATUS.GRADED;
     exam.gradedAt = at;
     exam.pausedAt = null;
@@ -167,7 +172,7 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
       perQuestion: results.perQuestion,
       // آمار زمان (بدون توقف‌ها) برای صفحهٔ نتیجه
       durationMinutes: exam.durationMinutes,
-      activeElapsedMs: isTimed(exam) ? Math.min(elapsed, exam.durationMinutes * 60_000) : elapsed,
+      activeElapsedMs: activeMs,
       pausedTotalMs: pausedTotalMs(exam),
       pauseCount: exam.pauseCount ?? 0,
     };
@@ -376,6 +381,7 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
           exam.status = STATUS.IN_PROGRESS;
           exam.startedAt = t;
           exam.endedAt = null;
+          exam.elapsedMs = null;
           exam.pausedAt = null;
           exam.pausedTotalMs = 0;
           exam.pauseCount = 0;
@@ -391,16 +397,13 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
       return setAnswerImpl(id, questionIndex, null);
     },
 
-    /** توقف تایمر؛ زمان آزمون در حین توقف مصرف نمی‌شود */
+    /** توقف تایمر/کرنومتر؛ زمان آزمون در حین توقف مصرف نمی‌شود */
     pauseExam(id) {
       const t = now();
       return clone(
         update(id, (exam) => {
           if (exam.status !== STATUS.IN_PROGRESS) {
             throw new DomainError('فقط آزمون در حال برگزاری را می‌توان متوقف کرد.');
-          }
-          if (!isTimed(exam)) {
-            throw new DomainError('این آزمون بدون زمان است و تایمر ندارد.');
           }
           if (isPaused(exam)) throw new DomainError('تایمر آزمون از قبل متوقف است.');
           if (isExpired(exam, t)) throw new DomainError('زمان آزمون تمام شده است.');
@@ -425,7 +428,7 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
       );
     },
 
-    /** پایان دستی آزمون توسط کاربر (حتی در حالت توقف) */
+    /** پایان دستی آزمون توسط کاربر (حتی در حالت توقف) و ثبت زمان سپری‌شده در آزمون */
     endExamManually(id) {
       const t = now();
       return clone(
@@ -440,6 +443,7 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
           }
           const scheduled = scheduledEndsAt(exam.startedAt, exam.durationMinutes, pausedTotalMs(exam));
           exam.endedAt = scheduled != null ? Math.min(t, scheduled) : Math.max(t, exam.startedAt ?? t);
+          exam.elapsedMs = activeElapsedMs(exam, exam.endedAt);
           // کلید به‌ارث‌رسیده و کامل → بدون توقف در تصحیح‌کننده، مستقیم کارنامه
           if (isAutoGradeReady(exam)) applyGrade(exam, t);
           else exam.status = STATUS.AWAITING_GRADING;
@@ -459,6 +463,7 @@ export function createAppStore({ storage = null, now = () => Date.now() } = {}) 
           if (exam.endedAt == null) {
             exam.endedAt = scheduledEndsAt(exam.startedAt, exam.durationMinutes, pausedTotalMs(exam));
           }
+          exam.elapsedMs = activeElapsedMs(exam, exam.endedAt);
           if (isAutoGradeReady(exam)) applyGrade(exam, t);
           else exam.status = STATUS.AWAITING_GRADING;
         }),

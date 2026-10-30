@@ -4,7 +4,8 @@ import { h, clearEl, scrollToEl, srOnly } from '../dom.js';
 import { toast, icon, kbd, segmented } from '../components.js';
 import { OPTIONS, optionTitle, findMissingKeys } from '../../core/scoring.js';
 import { STATUS, startNumberOf } from '../../core/model.js';
-import { formatNumber, formatQuestionNo, formatRange, formatAnswerCount } from '../../core/format.js';
+import { recordedElapsedSeconds } from '../../core/timer.js';
+import { formatNumber, formatQuestionNo, formatRange, formatAnswerCount, formatSeconds } from '../../core/format.js';
 import { attachQuestionShortcuts } from '../keyboard.js';
 
 export function correctorView({ rootEl, store, navigate, exam }) {
@@ -56,6 +57,7 @@ export function correctorView({ rootEl, store, navigate, exam }) {
     }
     if (pendingMissing) showWarning(pendingMissing);
 
+    const recordedSecs = recordedElapsedSeconds(current);
     const top = h(
       'div',
       { class: 'sheet-top' },
@@ -71,7 +73,7 @@ export function correctorView({ rootEl, store, navigate, exam }) {
         h(
           'span',
           { class: 'sheet-sub' },
-          `کلید صحیح هر سوال را انتخاب کنید · شمارهٔ ${formatRange(start, current.questionCount)}`,
+          `کلید صحیح هر سوال را انتخاب کنید · شمارهٔ ${formatRange(start, current.questionCount)}${recordedSecs != null ? ` · زمان ثبت‌شده: ${formatSeconds(recordedSecs)}` : ''}`,
         ),
         h('span', { class: 'sheet-shortcuts' }, kbd('۱'), kbd('۲'), kbd('۳'), kbd('۴'), srOnly('میان‌بُرهای کیبورد برای انتخاب کلید')),
       ),

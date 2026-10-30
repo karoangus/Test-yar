@@ -128,7 +128,32 @@ export function remainingSeconds(exam, now) {
   return ms == null ? null : Math.ceil(ms / 1000);
 }
 
-/** زمان صرف‌شده روی آزمون به ثانیه (بدون توقف‌ها) */
+/** زمان صرف‌شده روی آزمون به ثانیه (بدون توقف‌ها؛ مناسب نمایش کرنومتر) */
 export function activeElapsedSeconds(exam, now) {
-  return Math.round(activeElapsedMs(exam, now) / 1000);
+  return Math.floor(activeElapsedMs(exam, now) / 1000);
+}
+
+/**
+ * زمان ثبت‌شدهٔ صرف‌شده در آزمون پایان‌یافته به میلی‌ثانیه.
+ * اولویت با مقدار ثبت‌شده در result/exam است؛ در غیر این صورت از روی startedAt و endedAt محاسبه می‌شود.
+ */
+export function recordedElapsedMs(exam) {
+  if (exam == null) return null;
+  if (Number.isFinite(exam.result?.activeElapsedMs) && exam.result.activeElapsedMs >= 0) {
+    return exam.result.activeElapsedMs;
+  }
+  if (Number.isFinite(exam.elapsedMs) && exam.elapsedMs >= 0) {
+    return exam.elapsedMs;
+  }
+  if (exam.startedAt != null && exam.endedAt != null) {
+    const raw = activeElapsedMs(exam, exam.endedAt);
+    return isTimed(exam) ? Math.min(raw, durationMs(exam)) : raw;
+  }
+  return null;
+}
+
+/** زمان ثبت‌شدهٔ صرف‌شده در آزمون پایان‌یافته به ثانیه (یا null اگر هنوز تمام نشده باشد) */
+export function recordedElapsedSeconds(exam) {
+  const ms = recordedElapsedMs(exam);
+  return ms == null ? null : Math.round(ms / 1000);
 }

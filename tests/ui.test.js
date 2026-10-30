@@ -651,12 +651,13 @@ test('سناریو ۱۶: آزمون بدون زمان (خالی گذاشتن ت�
   await settle();
   await settle();
 
-  assert.equal(text('[data-clock]'), 'بدون زمان', 'به‌جای شمارش معکوس، بدون زمان نمایش داده می‌شود');
-  assert.equal($('.pause-btn'), null, 'آزمون بدون تایمر دکمهٔ توقف تایمر ندارد');
-  assert.equal($('.progress-thin'), null, 'نوار زمان در آزمون بدون تایمر نمایش داده نمی‌شود');
+  assert.equal(text('[data-clock]'), '⏱ ۰۰:۰۰', 'کرنومتر از ۰۰:۰۰ شروع به شمارش می‌کند');
+  assert.equal($('[data-clock]').dataset.stopwatch, '1', 'نشانگر کرنومتر فعال است');
+  assert.ok($('.pause-btn'), 'کرنومتر دکمهٔ توقف دارد');
+  assert.equal($('.progress-thin'), null, 'نوار شمارش معکوس در آزمون بدون زمان نمایش داده نمی‌شود');
 
-  // حتی پس از گذشت چند ساعت، آزمون قفل نمی‌شود و کاربر می‌تواند پاسخ دهد
-  fake += 3 * 3600_000;
+  // حتی پس از گذشت چند ساعت، آزمون قفل نمی‌شود و کرنومتر زمان سپری‌شده را نشان می‌دهد
+  fake += 3 * 3600_000 + 25_000;
   uStore.refresh();
   await settle();
   assert.equal($('.lock-overlay'), null, 'آزمون بدون زمان هرگز خودبه‌خود تمام نمی‌شود');
@@ -665,14 +666,15 @@ test('سناریو ۱۶: آزمون بدون زمان (خالی گذاشتن ت�
   await settle();
   assert.equal(uStore.get(exam.id).answers[0], 'A');
   assert.equal(uStore.get(exam.id).answers[1], 'B');
+  assert.equal(text('[data-clock]'), '⏱ ۱۸۰:۲۵', 'کرنومتر زمان سپری‌شده را دقیق نشان می‌دهد');
 
   // بررسی داشبورد و تاریخچه در حین برگزاری آزمون بدون زمان
   W.location.hash = '#/';
   await settle();
-  assert.equal(text('[data-live-timer]'), 'بدون زمان');
+  assert.equal(text('[data-live-timer]'), '⏱ ۱۸۰:۲۵');
   W.location.hash = '#/history';
   await settle();
-  assert.equal(text('[data-history-timer]'), 'بدون زمان');
+  assert.equal(text('[data-history-timer]'), '⏱ ۱۸۰:۲۵');
 
   // بازگشت به آزمون و پایان دستی توسط خود کاربر
   W.location.hash = `#/exam/${exam.id}`;
@@ -684,15 +686,21 @@ test('سناریو ۱۶: آزمون بدون زمان (خالی گذاشتن ت�
   await settle();
   await settle();
 
+  assert.equal(uStore.get(exam.id).elapsedMs, 3 * 3600_000 + 25_000, 'زمان سپری‌شده در آزمون ثبت شد');
   assert.match(text('.sheet-name'), /تصحیح‌کننده/, 'با پایان دستی کاربر وارد تصحیح‌کننده می‌شود');
+  assert.match(text('.sheet-sub'), /زمان ثبت‌شده/, 'زمان ثبت‌شده در تصحیح‌کننده نمایش داده می‌شود');
   for (let i = 0; i < 4; i += 1) uStore.setKeyEntry(exam.id, i, 'A');
   const graded = uStore.finishGrading(exam.id);
   assert.equal(graded.ok, true);
 
   W.location.hash = `#/exam/${exam.id}/result`;
   await settle();
-  assert.match(text('.time-card'), /بدون زمان/, 'کارنامه بدون زمان بودن آزمون را نشان می‌دهد');
+  assert.match(text('.time-card'), /بدون زمان \(کرنومتر\)/, 'کارنامه بدون زمان بودن آزمون (کرنومتر) را نشان می‌دهد');
   assert.match(text('.time-card'), /۳ ساعت/, 'زمان فعال پاسخ‌گویی ثبت شده است');
+
+  W.location.hash = '#/history';
+  await settle();
+  assert.match(text('.history-card'), /زمان صرف‌شده/, 'زمان ثبت‌شده در تاریخچهٔ آزمون نمایش داده می‌شود');
 });
 
 test('پاک‌سازی: بازگرداندن Date.now و نابودی اپ', () => {
