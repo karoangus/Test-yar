@@ -1,4 +1,7 @@
 // ── پاسخ‌برگ: ثبت پاسخ‌ها با تایمر واقعی، توقف/ادامه و قفل کامل پس از پایان ──
+// از سوال اول شروع می‌کند، دور سوال فعال یک کادر زرد متحرک می‌کشد، بعد از
+// پاسخ خودکار به سوال بعدی اسکرول می‌کند و امکان رد کردن سوال بدون پاسخ را
+// با حالت «رد شد» (dashed + نشان) فراهم می‌کند.
 
 import { h, clearEl, scrollToEl, srOnly } from '../dom.js';
 import { onTick, confirmDialog, toast, icon, kbd } from '../components.js';
@@ -27,6 +30,75 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
   let tickerCleanup = null;
   let shortcuts = null;
   let lastPhase = null;
+  let currentActiveIndex = 0;
+  const skippedSet = new Set();
+
+  function cardEl(index) {
+    return container.querySelector(`.question-card[data-q="${index}"]`);
+  }
+
+  function activateQuestion(index, { scroll = true } = {}) {
+    currentActiveIndex = index;
+    if (shortcuts) {
+      shortcuts.setActive(index, { scroll });
+    } else if (scroll) {
+      const el = cardEl(index);
+      if (el) scrollToEl(el);
+    }
+    // اگر بعد از رندر هنوز shortcuts ساخته نشده، هایلایت را دستی هم بزنیم
+    syncActiveHighlight();
+  }
+
+  function syncActiveHighlight() {
+    for (const card of container.querySelectorAll('.question-card[data-q]')) {
+      const idx = Number(card.getAttribute('data-q'));
+      card.classList.toggle('question-active', idx === currentActiveIndex);
+    }
+    for (const chip of container.querySelectorAll('[data-chip]')) {
+      const idx = Number(chip.getAttribute('data-chip'));
+      chip.classList.toggle('chip-active', idx === currentActiveIndex);
+    }
+  }
+
+  function skipQuestion(index) {
+    const fresh = store.get(exam.id);
+    if (!fresh) return;
+    const phase = currentPhase(fresh, Date.now());
+    if (phase === PHASE.PAUSED) {
+      toast('تایمر متوقف است؛ برای ادامه، آزمون را از سر بگیرید.', 'error');
+      return;
+    }
+    if (!canAnswer(fresh, Date.now())) {
+      toast('آزمون قفل شده است.', 'error');
+      return;
+    }
+    if (fresh.answers[index] == null) {
+      skippedSet.add(index);
+      const card = cardEl(index);
+      if (card) {
+        card.classList.add('question-skipped');
+        const badge = card.querySelector('[data-skip-badge]');
+        if (badge) badge.hidden = false;
+        const skipBtn = card.querySelector('[data-skip]');
+        if (skipBtn) skipBtn.hidden = true;
+      }
+      const chip = container.querySelector(`[data-chip="${index}"]`);
+      if (chip) chip.classList.add('chip-skipped');
+    }
+    if (index + 1 < fresh.questionCount) {
+      activateQuestion(index + 1, { scroll: true });
+    } else {
+      const [firstUnanswered] = store.unansweredIndexes(exam.id);
+      if (firstUnanswered != null && firstUnanswered !== index) {
+        activateQuestion(firstUnanswered, { scroll: true });
+      } else {
+        // آخر آزمون هستیم و همه دیده شده‌اند — همان جا بمانیم
+        activateQuestion(index, { scroll: false });
+        toast('به آخر آزمون رسیدید — می‌توانید از ناوبری به «رد شده‌ها» برگردید.', 'info');
+      }
+    }
+    refreshDynamic(store.get(exam.id), Date.now());
+  }
 
   function render() {
     if (tickerCleanup) {
@@ -96,7 +168,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
         'div',
         { class: 'sheet-top-row' },
         progressLabel,
-        h('span', { class: 'sheet-shortcuts' }, kbd('۱'), kbd('۲'), kbd('۳'), kbd('۴'), srOnly('میان‌بُرهای کیبورد برای انتخاب گزینه')),
+        h('span', { class: 'sheet-shortcuts' }, kbd('۱'), kbd('۲'), kbd('۳'), kbd('۴'), kbd('۰'), srOnly('میان‌بُر — ۰ برای رد کردن سوال فعال')),
       ),
       h('div', { class: 'progress' }, answersFill),
       timed ? h('div', { class: 'progress progress-thin' }, timeFill) : null,
@@ -104,16 +176,14 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
 
     // ── ناوش سوال‌ها ──
     const navGrid = h('div', { class: 'nav-grid' });
-    const chips = [];
     for (let i = 0; i < current.questionCount; i += 1) {
       const chip = h('button', {
         class: 'nav-chip',
         type: 'button',
         dataset: { chip: String(i) },
         text: formatNumber(start + i),
-        onClick: () => scrollToEl(container.querySelector(`.question-card[data-q="${i}"]`)),
+        onClick: () => activateQuestion(i, { scroll: true }),
       });
-      chips.push(chip);
       navGrid.append(chip);
     }
     const nextUnansweredBtn = h(
@@ -128,17 +198,35 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
             toast('به همهٔ سوال‌ها پاسخ داده‌اید.', 'success');
             return;
           }
-          scrollToEl(container.querySelector(`.question-card[data-q="${index}"]`));
+          activateQuestion(index, { scroll: true });
         },
       },
       icon('target', 16),
       ' اولین سوال بی‌پاسخ',
     );
+    const nextSkippedBtn = h(
+      'button',
+      {
+        class: 'btn btn-ghost btn-sm',
+        type: 'button',
+        dataset: { nextSkipped: '1' },
+        onClick: () => {
+          const skipped = [...skippedSet].filter((i) => store.get(exam.id)?.answers[i] == null).sort((a, b) => a - b);
+          if (skipped.length === 0) {
+            toast('سوال رد شده‌ای ندارید.', 'info');
+            return;
+          }
+          activateQuestion(skipped[0], { scroll: true });
+        },
+      },
+      icon('skip', 16),
+      ' سوال‌های رد شده',
+    );
     const navigator = h(
       'details',
       { class: 'qnav card' },
       h('summary', null, `پرش به سوال · شمارهٔ ${formatRange(start, current.questionCount)}`),
-      nextUnansweredBtn,
+      h('div', { class: 'toolbar', style: { marginBottom: '8px' } }, nextUnansweredBtn, nextSkippedBtn),
       navGrid,
     );
 
@@ -202,11 +290,38 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
     else if (locked && phase === PHASE.EXPIRED) container.append(timeUpOverlay(current, autoGrade));
 
     refreshDynamic(current, now);
+    // سوال فعال اولیه: اگر آزمون از قبل پاسخ دارد، از اولین بی‌پاسخ شروع نکنیم — طبق درخواست «از سوال اول شروع کنه»
+    // اما اگر کاربر قبلاً تا سوالی پیش رفته و صفحه رفرش شده، فعال را روی ۰ نگه می‌داریم تا تجربه یکسان بماند.
+    // currentActiveIndex قبلاً مقداردهی شده (۰ در ابتدای جلسه)
+    if (currentActiveIndex >= current.questionCount) currentActiveIndex = 0;
+    // تنظیم هایلایت اولیه بدون اسکرول (تا کاربر خودش اسکرول نکند، پرش نداشته باشیم)
     shortcuts = attachQuestionShortcuts({
       container,
+      initialIndex: currentActiveIndex,
       onPick: (index, optionId) => selectOption(index, optionId),
+      onSkip: (index) => skipQuestion(index),
       isDisabled: () => !canAnswer(store.get(exam.id), Date.now()),
+      onMove: (next) => {
+        currentActiveIndex = next;
+        syncActiveHighlight();
+        // وقتی با کیبورد یا کلیک جابه‌جا شد، حالت‌های بصری را به‌روز کن
+        for (let i = 0; i < current.questionCount; i += 1) {
+          const c = cardEl(i);
+          if (!c) continue;
+          const isSkipped = skippedSet.has(i) && store.get(exam.id)?.answers[i] == null;
+          c.classList.toggle('question-skipped', isSkipped);
+        }
+      },
     });
+    // همگام‌سازی هایلایت زرد روی لود اول
+    syncActiveHighlight();
+    for (let i = 0; i < current.questionCount; i += 1) {
+      const isSkipped = skippedSet.has(i) && current.answers[i] == null;
+      const card = cardEl(i);
+      if (card) card.classList.toggle('question-skipped', isSkipped);
+      const chip = container.querySelector(`[data-chip="${i}"]`);
+      if (chip) chip.classList.toggle('chip-skipped', isSkipped);
+    }
 
     // ── تیکر: نمایش زمان واقعی (شمارش معکوس تایمر یا شمارش رو به بالای کرنومتر) ──
     tickerCleanup = onTick(() => {
@@ -262,8 +377,22 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
     for (let i = 0; i < current.questionCount; i += 1) {
       const chip = container.querySelector(`[data-chip="${i}"]`);
       const isAnswered = current.answers[i] != null;
-      if (chip) chip.classList.toggle('chip-answered', isAnswered);
+      const isSkipped = skippedSet.has(i) && !isAnswered;
+      if (chip) {
+        chip.classList.toggle('chip-answered', isAnswered);
+        chip.classList.toggle('chip-skipped', isSkipped);
+      }
       if (!isAnswered) unanswered.push(i);
+      const card = cardEl(i);
+      if (card) {
+        card.classList.toggle('question-skipped', isSkipped);
+        const skipBadge = card.querySelector('[data-skip-badge]');
+        if (skipBadge) skipBadge.hidden = !isSkipped;
+        const skipBtn = card.querySelector('[data-skip]');
+        if (skipBtn) skipBtn.hidden = isAnswered || locked;
+        const clearBtn = card.querySelector(`[data-clear="${i}"]`);
+        if (clearBtn) clearBtn.hidden = !isAnswered;
+      }
     }
     for (const chip of container.querySelectorAll('[data-chip]')) chip.classList.remove('chip-next');
     if (unanswered.length > 0) {
@@ -271,12 +400,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
       if (chip) chip.classList.add('chip-next');
     }
 
-    // دکمهٔ «پاک‌کردن» هر کارت
-    for (let i = 0; i < current.questionCount; i += 1) {
-      const clearBtn = container.querySelector(`[data-clear="${i}"]`);
-      if (clearBtn) clearBtn.hidden = current.answers[i] == null;
-    }
-
+    // دکمهٔ «پاک‌کردن» و «رد کردن» هر کارت — همگام با skipped
     // توضیح توقف در overlay
     const pauseStats = container.querySelector('[data-pause-stats]');
     if (pauseStats && paused) {
@@ -286,6 +410,7 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
 
   function questionCard(current, index, locked, start) {
     const selected = current.answers[index] ?? null;
+    const isSkipped = skippedSet.has(index) && selected == null;
     const optionBtns = OPTIONS.map((opt) =>
       h(
         'button',
@@ -305,22 +430,39 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
 
     return h(
       'section',
-      { class: 'card question-card', dataset: { q: String(index) } },
+      { class: `card question-card${isSkipped ? ' question-skipped' : ''}${index === currentActiveIndex ? ' question-active' : ''}`, dataset: { q: String(index) } },
       h(
         'div',
         { class: 'q-head' },
         h('h3', { class: 'q-title' }, formatQuestionNo(index, start)),
         h(
-          'button',
-          {
-            class: 'btn-clear',
-            type: 'button',
-            hidden: selected == null,
-            dataset: { clear: String(index) },
-            attrs: { 'aria-label': `پاک‌کردن پاسخ ${formatQuestionNo(index, start)}` },
-            onClick: () => selectOption(index, null),
-          },
-          'پاک کردن',
+          'div',
+          { class: 'q-actions' },
+          h('span', { class: 'skip-badge', dataset: { skipBadge: String(index) }, hidden: !isSkipped }, 'رد شد'),
+          h(
+            'button',
+            {
+              class: 'btn-skip',
+              type: 'button',
+              dataset: { skip: String(index) },
+              hidden: selected != null || locked,
+              attrs: { 'aria-label': `رد کردن ${formatQuestionNo(index, start)}` },
+              onClick: () => skipQuestion(index),
+            },
+            'رد کردن →',
+          ),
+          h(
+            'button',
+            {
+              class: 'btn-clear',
+              type: 'button',
+              hidden: selected == null,
+              dataset: { clear: String(index) },
+              attrs: { 'aria-label': `پاک‌کردن پاسخ ${formatQuestionNo(index, start)}` },
+              onClick: () => selectOption(index, null),
+            },
+            'پاک کردن',
+          ),
         ),
       ),
       h(
@@ -352,15 +494,49 @@ export function answersheetView({ rootEl, store, navigate, rerender, exam }) {
       return;
     }
     // به‌روزرسانی درجا بدون رندر کامل (حفظ اسکرول)
-    const card = container.querySelector(`.question-card[data-q="${index}"]`);
+    const card = cardEl(index);
     if (card) {
       for (const btn of card.querySelectorAll('.option-btn')) {
         const isSelected = btn.dataset.opt === optId;
         btn.classList.toggle('option-selected', isSelected);
         btn.setAttribute('aria-checked', isSelected ? 'true' : 'false');
       }
+      // پاک کردن حالت رد شده اگر جواب داد
+      if (optId != null) {
+        skippedSet.delete(index);
+        card.classList.remove('question-skipped');
+        const badge = card.querySelector('[data-skip-badge]');
+        if (badge) badge.hidden = true;
+        const chip = container.querySelector(`[data-chip="${index}"]`);
+        if (chip) chip.classList.remove('chip-skipped');
+      }
     }
     refreshDynamic(store.get(exam.id), Date.now());
+
+    if (optId != null) {
+      // اگر سوال فعال را جواب داد، خودکار برو سوال بعدی و هایلایتش کن
+      const isActiveQuestion = index === currentActiveIndex;
+      const total = store.get(exam.id)?.questionCount ?? 0;
+      const next = index + 1 < total ? index + 1 : null;
+      if (isActiveQuestion && next != null) {
+        // تاخیر کوتاه تا کاربر انتخابش را ببیند، بعد اسکرول نرم
+        setTimeout(() => {
+          // ممکن است در این فاصله آزمون قفل شده باشد
+          const still = store.get(exam.id);
+          if (!still || !canAnswer(still, Date.now())) return;
+          activateQuestion(next, { scroll: true });
+        }, 340);
+      } else if (isActiveQuestion && next == null) {
+        // سوال آخر را جواب داد — اگر بی‌پاسخی مانده، به اولین بی‌پاسخ ببر (طراحی برای «بدون پاسخ گذاشتن»)
+        const [firstUnanswered] = store.unansweredIndexes(exam.id);
+        if (firstUnanswered != null && firstUnanswered !== index) {
+          setTimeout(() => activateQuestion(firstUnanswered, { scroll: true }), 340);
+        }
+      }
+    } else {
+      // پاک کردن پاسخ → همین سوال را فعال نگه دار (کاربر می‌خواهد دوباره جواب دهد)
+      activateQuestion(index, { scroll: false });
+    }
   }
 
   function pausedOverlay(current, autoGrade = false) {

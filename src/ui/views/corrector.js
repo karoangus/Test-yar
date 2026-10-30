@@ -1,4 +1,6 @@
 // ── تصحیح‌کننده: دریافت کلید صحیح، جدا از پاسخ‌های کاربر ─────────────────────
+// سوال فعال با کادر زرد متحرک هایلایت می‌شود و بعد از انتخاب کلید، خودکار به
+// سوال بعدی می‌رود؛ حالت رد شدن هم مشابه پاسخ‌برگ پشتیبانی می‌شود.
 
 import { h, clearEl, scrollToEl, srOnly } from '../dom.js';
 import { toast, icon, kbd, segmented } from '../components.js';
@@ -15,6 +17,52 @@ export function correctorView({ rootEl, store, navigate, exam }) {
   let onlyMissing = false;
   let shortcuts = null;
   let pendingMissing = null;
+  let currentActiveIndex = 0;
+  const skippedSet = new Set();
+
+  function cardEl(index) {
+    return container.querySelector(`.question-card[data-key-q="${index}"]`);
+  }
+
+  function activateQuestion(index, { scroll = true } = {}) {
+    currentActiveIndex = index;
+    if (shortcuts) shortcuts.setActive(index, { scroll });
+    else if (scroll) {
+      const el = cardEl(index);
+      if (el) scrollToEl(el);
+    }
+    syncActiveHighlight();
+  }
+
+  function syncActiveHighlight() {
+    for (const card of container.querySelectorAll('.question-card[data-key-q]')) {
+      const idx = Number(card.getAttribute('data-key-q'));
+      card.classList.toggle('question-active', idx === currentActiveIndex);
+    }
+  }
+
+  function skipQuestion(index) {
+    const fresh = store.get(exam.id);
+    if (!fresh) return;
+    if (fresh.key[index] == null) {
+      skippedSet.add(index);
+      const card = cardEl(index);
+      if (card) {
+        card.classList.add('question-skipped');
+        const badge = card.querySelector('[data-skip-badge-key]');
+        if (badge) badge.hidden = false;
+        const btn = card.querySelector('[data-skip-key]');
+        if (btn) btn.hidden = true;
+      }
+    }
+    const max = fresh.questionCount - 1;
+    if (index < max) activateQuestion(index + 1, { scroll: true });
+    else {
+      const [firstMissing] = findMissingKeys(fresh.questionCount, fresh.key);
+      if (firstMissing != null && firstMissing !== index) activateQuestion(firstMissing, { scroll: true });
+      else activateQuestion(index, { scroll: false });
+    }
+  }
 
   function render() {
     if (shortcuts) {
@@ -49,7 +97,7 @@ export function correctorView({ rootEl, store, navigate, exam }) {
               class: 'nav-chip chip-missing',
               type: 'button',
               text: formatNumber(start + i),
-              onClick: () => scrollToEl(container.querySelector(`.question-card[data-key-q="${i}"]`)),
+              onClick: () => activateQuestion(i, { scroll: true }),
             }),
           ),
         ),
@@ -75,7 +123,7 @@ export function correctorView({ rootEl, store, navigate, exam }) {
           { class: 'sheet-sub' },
           `کلید صحیح هر سوال را انتخاب کنید · شمارهٔ ${formatRange(start, current.questionCount)}${recordedSecs != null ? ` · زمان ثبت‌شده: ${formatSeconds(recordedSecs)}` : ''}`,
         ),
-        h('span', { class: 'sheet-shortcuts' }, kbd('۱'), kbd('۲'), kbd('۳'), kbd('۴'), srOnly('میان‌بُرهای کیبورد برای انتخاب کلید')),
+        h('span', { class: 'sheet-shortcuts' }, kbd('۱'), kbd('۲'), kbd('۳'), kbd('۴'), kbd('۰'), srOnly('میان‌بُر — ۰ برای رد کردن')),
       ),
     );
 
@@ -123,7 +171,7 @@ export function correctorView({ rootEl, store, navigate, exam }) {
               toast('کلید همهٔ سوال‌ها وارد شده است.', 'success');
               return;
             }
-            scrollToEl(container.querySelector(`.question-card[data-key-q="${index}"]`));
+            activateQuestion(index, { scroll: true });
           },
         },
         icon('target', 16),
@@ -172,12 +220,25 @@ export function correctorView({ rootEl, store, navigate, exam }) {
     // append(null) متن «null» را چاپ می‌کند؛ پس فقط عناصر واقعی اضافه می‌شوند
     container.append(top, ...(inheritedBanner ? [inheritedBanner] : []), warning, h('main', { class: 'page sheet-page' }, filterBar, list), footer);
     refreshKeyCount();
+    if (currentActiveIndex >= current.questionCount) currentActiveIndex = 0;
 
     function refreshKeyCount() {
       const fresh = store.get(exam.id);
       if (!fresh) return;
       const entered = fresh.questionCount - findMissingKeys(fresh.questionCount, fresh.key).length;
       keyCountEl.textContent = `کلید واردشده: ${formatAnswerCount(entered, fresh.questionCount, startNumberOf(fresh))}`;
+      // همگام‌سازی حالت رد شده روی چیپ‌ها/کارت‌ها
+      for (let i = 0; i < fresh.questionCount; i += 1) {
+        const card = cardEl(i);
+        const isSkipped = skippedSet.has(i) && fresh.key[i] == null;
+        if (card) {
+          card.classList.toggle('question-skipped', isSkipped);
+          const badge = card.querySelector('[data-skip-badge-key]');
+          if (badge) badge.hidden = !isSkipped;
+          const skipBtn = card.querySelector('[data-skip-key]');
+          if (skipBtn) skipBtn.hidden = fresh.key[i] != null;
+        }
+      }
     }
 
     function selectKey(index, optionId) {
@@ -196,6 +257,14 @@ export function correctorView({ rootEl, store, navigate, exam }) {
         }
         const clearBtn = card.querySelector('[data-clear-key]');
         if (clearBtn) clearBtn.hidden = optionId == null;
+        const skipBtn = card.querySelector('[data-skip-key]');
+        if (skipBtn) skipBtn.hidden = optionId != null;
+        if (optionId != null) {
+          skippedSet.delete(index);
+          card.classList.remove('question-skipped');
+          const badge = card.querySelector('[data-skip-badge-key]');
+          if (badge) badge.hidden = true;
+        }
       }
       const fresh = store.get(exam.id);
       const stillMissing = findMissingKeys(fresh.questionCount, fresh.key);
@@ -204,10 +273,30 @@ export function correctorView({ rootEl, store, navigate, exam }) {
         showWarning([]);
       }
       refreshKeyCount();
+      if (optionId != null) {
+        const isActive = index === currentActiveIndex;
+        const total = fresh.questionCount;
+        const next = index + 1 < total ? index + 1 : null;
+        if (isActive && next != null && indexes.includes(next)) {
+          setTimeout(() => activateQuestion(next, { scroll: true }), 320);
+        } else if (isActive && next == null) {
+          const [firstMissing] = findMissingKeys(fresh.questionCount, fresh.key);
+          if (firstMissing != null && firstMissing !== index) {
+            setTimeout(() => activateQuestion(firstMissing, { scroll: true }), 320);
+          }
+        } else if (isActive && next != null && !indexes.includes(next)) {
+          // فیلتر «بدون کلید» فعال است و سوال بعدی در لیست نیست — به اولین بدون کلید برو
+          const [firstMissing] = stillMissing;
+          if (firstMissing != null) setTimeout(() => activateQuestion(firstMissing, { scroll: true }), 320);
+        }
+      } else {
+        activateQuestion(index, { scroll: false });
+      }
     }
 
     function keyCard(currentExam, index, start) {
       const selectedKey = currentExam.key[index] ?? null;
+      const isSkipped = skippedSet.has(index) && selectedKey == null;
       const optionBtns = OPTIONS.map((opt) =>
         h(
           'button',
@@ -225,22 +314,39 @@ export function correctorView({ rootEl, store, navigate, exam }) {
       );
       return h(
         'section',
-        { class: 'card question-card', dataset: { keyQ: String(index) } },
+        { class: `card question-card${isSkipped ? ' question-skipped' : ''}${index === currentActiveIndex ? ' question-active' : ''}`, dataset: { keyQ: String(index) } },
         h(
           'div',
           { class: 'q-head' },
           h('h3', { class: 'q-title' }, formatQuestionNo(index, start)),
           h(
-            'button',
-            {
-              class: 'btn-clear',
-              type: 'button',
-              hidden: selectedKey == null,
-              dataset: { clearKey: String(index) },
-              attrs: { 'aria-label': `پاک‌کردن کلید ${formatQuestionNo(index, start)}` },
-              onClick: () => selectKey(index, null),
-            },
-            'پاک کردن',
+            'div',
+            { class: 'q-actions' },
+            h('span', { class: 'skip-badge', dataset: { skipBadgeKey: String(index) }, hidden: !isSkipped }, 'رد شد'),
+            h(
+              'button',
+              {
+                class: 'btn-skip',
+                type: 'button',
+                hidden: selectedKey != null,
+                dataset: { skipKey: String(index) },
+                attrs: { 'aria-label': `رد کردن ${formatQuestionNo(index, start)}` },
+                onClick: () => skipQuestion(index),
+              },
+              'رد کردن →',
+            ),
+            h(
+              'button',
+              {
+                class: 'btn-clear',
+                type: 'button',
+                hidden: selectedKey == null,
+                dataset: { clearKey: String(index) },
+                attrs: { 'aria-label': `پاک‌کردن کلید ${formatQuestionNo(index, start)}` },
+                onClick: () => selectKey(index, null),
+              },
+              'پاک کردن',
+            ),
           ),
         ),
         h('p', { class: 'key-prompt' }, 'پاسخ صحیح را انتخاب کنید:'),
@@ -255,8 +361,15 @@ export function correctorView({ rootEl, store, navigate, exam }) {
     shortcuts = attachQuestionShortcuts({
       container,
       indexAttr: 'keyQ',
+      initialIndex: currentActiveIndex,
       onPick: (index, optionId) => selectKey(index, optionId),
+      onSkip: (index) => skipQuestion(index),
+      onMove: (next) => {
+        currentActiveIndex = next;
+        syncActiveHighlight();
+      },
     });
+    syncActiveHighlight();
 
     return refreshKeyCount;
   }
