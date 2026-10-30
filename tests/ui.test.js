@@ -622,6 +622,77 @@ test('سناریو ۱۵: آزمون از سوال ۵۲ تا ۶۲ (شمارهٔ �
   assert.match(text('.history-card'), /۵۲ تا ۶۲/);
 });
 
+test('سناریو ۱۶: آزمون بدون زمان (خالی گذاشتن تایم) و پایان دستی توسط کاربر', async () => {
+  app.destroy();
+  const uStore = freshStore();
+  app = createApp({ rootEl: document.getElementById('app'), store: uStore });
+
+  // ── ساخت آزمون بدون وارد کردن زمان ──
+  W.location.hash = '#/new';
+  await settle();
+  $('#f-name').value = 'آزمون تمرینی بدون زمان';
+  $('#f-count').value = '4';
+  $('#f-duration').value = ''; // خالی گذاشتن زمان آزمون
+  $('.form-card').dispatchEvent(new W.Event('submit', { bubbles: true, cancelable: true }));
+  await settle();
+  await settle();
+
+  const exam = uStore.all()[0];
+  assert.ok(exam, 'آزمون بدون زمان ساخته شد');
+  assert.equal(exam.durationMinutes, null);
+  assert.match(text('.info-grid'), /بدون زمان/, 'صفحهٔ آماده‌سازی بدون زمان بودن را نشان می‌دهد');
+
+  // ── شروع آزمون ──
+  click(buttonWith('.prepare-card .btn', 'شروع آزمون'));
+  await settle();
+  click(buttonWith('.modal-actions .btn', 'شروع آزمون'));
+  await settle();
+  await settle();
+
+  assert.equal(text('[data-clock]'), 'بدون زمان', 'به‌جای شمارش معکوس، بدون زمان نمایش داده می‌شود');
+  assert.equal($('.pause-btn'), null, 'آزمون بدون تایمر دکمهٔ توقف تایمر ندارد');
+  assert.equal($('.progress-thin'), null, 'نوار زمان در آزمون بدون تایمر نمایش داده نمی‌شود');
+
+  // حتی پس از گذشت چند ساعت، آزمون قفل نمی‌شود و کاربر می‌تواند پاسخ دهد
+  fake += 3 * 3600_000;
+  uStore.refresh();
+  await settle();
+  assert.equal($('.lock-overlay'), null, 'آزمون بدون زمان هرگز خودبه‌خود تمام نمی‌شود');
+  click($$('.question-card')[0].querySelector('.option-btn[data-opt="A"]'));
+  click($$('.question-card')[1].querySelector('.option-btn[data-opt="B"]'));
+  await settle();
+  assert.equal(uStore.get(exam.id).answers[0], 'A');
+  assert.equal(uStore.get(exam.id).answers[1], 'B');
+
+  // بررسی داشبورد و تاریخچه در حین برگزاری آزمون بدون زمان
+  W.location.hash = '#/';
+  await settle();
+  assert.equal(text('[data-live-timer]'), 'بدون زمان');
+  W.location.hash = '#/history';
+  await settle();
+  assert.equal(text('[data-history-timer]'), 'بدون زمان');
+
+  // بازگشت به آزمون و پایان دستی توسط خود کاربر
+  W.location.hash = `#/exam/${exam.id}`;
+  await settle();
+  await settle();
+  click(buttonWith('.sheet-footer .btn', 'پایان آزمون'));
+  await settle();
+  click(buttonWith('.modal-actions .btn', 'پایان آزمون'));
+  await settle();
+  await settle();
+
+  assert.match(text('.sheet-name'), /تصحیح‌کننده/, 'با پایان دستی کاربر وارد تصحیح‌کننده می‌شود');
+  for (let i = 0; i < 4; i += 1) uStore.setKeyEntry(exam.id, i, 'A');
+  const graded = uStore.finishGrading(exam.id);
+  assert.equal(graded.ok, true);
+
+  W.location.hash = `#/exam/${exam.id}/result`;
+  await settle();
+  assert.match(text('.time-card'), /بدون زمان/, 'کارنامه بدون زمان بودن آزمون را نشان می‌دهد');
+  assert.match(text('.time-card'), /۳ ساعت/, 'زمان فعال پاسخ‌گویی ثبت شده است');
+});
+
 test('پاک‌سازی: بازگرداندن Date.now و نابودی اپ', () => {
   app.destroy();
   Date.now = realNow;

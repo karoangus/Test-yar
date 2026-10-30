@@ -165,3 +165,20 @@ test('پشتیبان‌گیری و بازگردانی شمارهٔ شروع را
   assert.equal(parsed.ok, true);
   assert.equal(parsed.exams[0].startNumber, 62);
 });
+
+test('آزمون بدون زمان (durationMinutes خالی/null) در ذخیره‌سازی و پشتیبان حفظ می‌شود', () => {
+  const untimed = sanitizeExam({ ...base, durationMinutes: null, status: STATUS.IN_PROGRESS, startedAt: 500 });
+  assert.ok(untimed);
+  assert.equal(untimed.durationMinutes, null);
+  assert.equal(untimed.status, STATUS.IN_PROGRESS);
+
+  // عدد غیرمثبت یا نامعتبر همچنان رد می‌شود
+  assert.equal(sanitizeExam({ ...base, durationMinutes: 0 }), null);
+  assert.equal(sanitizeExam({ ...base, durationMinutes: -5 }), null);
+  assert.equal(sanitizeExam({ ...base, durationMinutes: 'abc' }), null);
+
+  const backup = serializeBackup([untimed]);
+  const parsed = parseBackup(backup);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.exams[0].durationMinutes, null);
+});

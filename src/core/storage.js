@@ -167,9 +167,16 @@ export function sanitizeExam(raw) {
   const id = typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : null;
   const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : null;
   const questionCount = Number.isInteger(raw.questionCount) ? raw.questionCount : NaN;
-  const durationMinutes = Number.isFinite(raw.durationMinutes) ? raw.durationMinutes : NaN;
   if (!id || !name || !Number.isInteger(questionCount) || questionCount < 1) return null;
-  if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return null;
+
+  // زمان خالی (null/undefined) یعنی آزمون بدون محدودیت زمانی؛ عدد نامعتبر یا غیرمثبت رد می‌شود
+  let durationMinutes = null;
+  if (raw.durationMinutes != null) {
+    if (typeof raw.durationMinutes !== 'number' || !Number.isFinite(raw.durationMinutes) || raw.durationMinutes <= 0) {
+      return null;
+    }
+    durationMinutes = raw.durationMinutes;
+  }
 
   const category = CATEGORIES.includes(raw.category) ? raw.category : 'سایر';
   // شمارهٔ شروع سوال‌ها (دادهٔ نسخه‌های قبلی معتبر است و ۱ فرض می‌شود)
@@ -188,6 +195,7 @@ export function sanitizeExam(raw) {
   // ترمیم دادهٔ ناسازگار: آزمون بدون زمان شروع نباید «در حال انجام» یا «تمام‌شده» بماند
   // (وگرنه تایمر با NaN هرگز تمام نمی‌شد).
   if (startedAt == null && status !== STATUS.GRADED) status = STATUS.CREATED;
+  if (durationMinutes == null && status === STATUS.TIME_UP) status = STATUS.AWAITING_GRADING;
   if (status === STATUS.GRADED && result == null) status = STATUS.AWAITING_GRADING;
 
   let pausedTotalMs = Number.isFinite(raw.pausedTotalMs) && raw.pausedTotalMs > 0 ? raw.pausedTotalMs : 0;
@@ -195,12 +203,13 @@ export function sanitizeExam(raw) {
   let pausedAt = Number.isFinite(raw.pausedAt) ? raw.pausedAt : null;
 
   if (pausedAt != null) {
-    const validPause = status === STATUS.IN_PROGRESS && startedAt != null && pausedAt >= startedAt;
+    const validPause =
+      durationMinutes != null && status === STATUS.IN_PROGRESS && startedAt != null && pausedAt >= startedAt;
     if (validPause) {
       pausedTotalMs = Math.max(0, pausedTotalMs);
       pauseCount = Math.max(1, pauseCount);
     } else {
-      // توقف بی‌معنا (آزمون تمام‌شده یا بدون شروع) پاک می‌شود تا قفل/تایمر خراب نشود
+      // توقف بی‌معنا (آزمون تمام‌شده، بدون شروع یا بدون تایمر) پاک می‌شود تا قفل/تایمر خراب نشود
       pausedAt = null;
     }
   }

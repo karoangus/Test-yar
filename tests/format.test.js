@@ -30,6 +30,9 @@ test('قالب‌بندی مدت هرگز «۶۰ دقیقه» یا «۱ ساعت
   assert.equal(formatDuration(0), '—');
   assert.equal(formatDuration(-5), '—');
   assert.equal(formatDuration(NaN), '—');
+  assert.equal(formatDuration(null), 'بدون زمان');
+  assert.equal(formatDuration(undefined), 'بدون زمان');
+  assert.equal(formatDuration(''), 'بدون زمان');
   assert.equal(formatDuration(24 * 60), '۲۴ ساعت');
 });
 
@@ -45,6 +48,7 @@ test('قالب‌بندی ثانیه برای زمان‌های توقف', () =>
 test('ساعت و درصد با ارقام فارسی', () => {
   assert.equal(formatClock(1799), '۲۹:۵۹');
   assert.equal(formatClock(-10), '۰۰:۰۰');
+  assert.equal(formatClock(null), 'بدون زمان');
   assert.equal(formatPercent(63.335), '۶۳٫۳۴٪');
   assert.equal(formatPercent(NaN), '—');
   assert.equal(toFa(-1.5), '−۱٫۵');

@@ -6,7 +6,7 @@ import { CATEGORIES, MAX_QUESTIONS, MAX_START_NUMBER } from '../../core/model.js
 import { DomainError } from '../../core/store.js';
 import { toFa, formatNumber, formatRange, normalizeStartNumber, normalizeDigits } from '../../core/format.js';
 
-const DURATION_PRESETS = [10, 20, 30, 45, 60, 90];
+const DURATION_PRESETS = ['', 10, 20, 30, 45, 60, 90];
 const COUNT_PRESETS = [10, 20, 30, 50, 100];
 const START_PRESETS = [1, 51, 101, 201];
 
@@ -42,7 +42,7 @@ export function createView({ rootEl, store, navigate }) {
     type: 'text',
     id: 'f-duration',
     inputmode: 'decimal',
-    placeholder: 'مثلاً: 30',
+    placeholder: 'مثلاً: ۳۰ — خالی یعنی بدون زمان',
     attrs: { autocomplete: 'off' },
   });
   const categorySelect = h(
@@ -86,7 +86,10 @@ export function createView({ rootEl, store, navigate }) {
 
   const countPresets = presetChips(COUNT_PRESETS, countInput, (v) => `${toFa(v)} سوال`);
   const startPresets = presetChips(START_PRESETS, startInput, (v) => `از ${toFa(v)}`);
-  const durationPresets = presetChips(DURATION_PRESETS, durationInput, (v) => `${toFa(v)} دقیقه`);
+  const durationPresets = presetChips(DURATION_PRESETS, durationInput, (v) =>
+    v === '' ? 'بدون زمان' : `${toFa(v)} دقیقه`,
+  );
+  durationPresets.syncActive();
 
   /**
    * پیش‌نمایش زندهٔ شمارهٔ سوال‌ها؛ همان چیزی که در پاسخ‌برگ و تصحیح‌کننده می‌بینید.
@@ -144,7 +147,11 @@ export function createView({ rootEl, store, navigate }) {
       h('label', { for: 'f-duration' }, 'زمان آزمون (دقیقه)'),
       durationPresets.wrap,
       durationInput,
-      h('span', { class: 'field-hint' }, 'زمان دقیق است و می‌توانید وسط آزمون تایمر را متوقف کنید.'),
+      h(
+        'span',
+        { class: 'field-hint' },
+        'اگر خالی بگذارید آزمون بدون محدودیت زمانی برگزار می‌شود و هر زمان خودتان خواستید آزمون را تمام می‌کنید.',
+      ),
       fieldError('duration'),
     ),
     h(

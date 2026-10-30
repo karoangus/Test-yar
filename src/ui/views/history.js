@@ -20,7 +20,7 @@ import {
   formatClock,
   formatRange,
 } from '../../core/format.js';
-import { STATUS, PHASE, currentPhase, isAutoGradeReady } from '../../core/model.js';
+import { STATUS, PHASE, currentPhase, isAutoGradeReady, isTimed } from '../../core/model.js';
 import { remainingSeconds } from '../../core/timer.js';
 
 const STATUS_FILTERS = [
@@ -197,6 +197,10 @@ export function historyView({ rootEl, store, navigate }) {
     for (const el of container.querySelectorAll('[data-history-timer]')) {
       const exam = store.get(el.dataset.examId ?? '');
       if (!exam) continue;
+      if (!isTimed(exam)) {
+        el.textContent = 'بدون زمان';
+        continue;
+      }
       const phase = currentPhase(exam, now);
       if (phase === PHASE.RUNNING) el.textContent = `⏱ ${formatClock(remainingSeconds(exam, now))}`;
       else if (phase === PHASE.PAUSED) el.textContent = `⏸ ${formatClock(remainingSeconds(exam, now))}`;
@@ -223,8 +227,12 @@ export function historyView({ rootEl, store, navigate }) {
       if (exam.gradedAt) rows.push(['تاریخ تصحیح', formatDateTime(exam.gradedAt)]);
     }
     if (exam.status === STATUS.IN_PROGRESS) {
-      rows.push(['وضعیت تایمر', exam.pausedAt != null ? 'متوقف' : 'در حال اجرا']);
-      rows.push(['تعداد توقف‌ها', formatNumber(exam.pauseCount ?? 0)]);
+      if (isTimed(exam)) {
+        rows.push(['وضعیت تایمر', exam.pausedAt != null ? 'متوقف' : 'در حال اجرا']);
+        rows.push(['تعداد توقف‌ها', formatNumber(exam.pauseCount ?? 0)]);
+      } else {
+        rows.push(['وضعیت تایمر', 'بدون زمان']);
+      }
     }
     if (exam.keyOrigin) {
       rows.push(['کلید تصحیح', isAutoGradeReady(exam) ? 'آماده · خودکار' : 'به‌ارث‌رسیدهٔ ناقص']);

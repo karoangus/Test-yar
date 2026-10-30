@@ -8,6 +8,7 @@ import {
   canAnswer,
   isLocked,
   isLive,
+  isTimed,
   startNumberOf,
   STATUS,
   CATEGORIES,
@@ -46,8 +47,8 @@ test('تعداد سوالات: فقط عدد صحیح مثبت', () => {
   assert.equal(ok.values.questionCount, 20);
 });
 
-test('زمان آزمون: فقط عدد مثبت', () => {
-  for (const bad of ['0', '-10', 'xyz', '', null]) {
+test('زمان آزمون: خالی یعنی بدون زمان؛ عدد نامعتبر یا غیرمثبت رد می‌شود', () => {
+  for (const bad of ['0', '۰', '-10', 'xyz']) {
     const res = validateExamInput({ ...valid, durationMinutes: bad });
     assert.equal(res.ok, false, `باید رد شود: ${bad}`);
     assert.ok(res.errors.duration);
@@ -55,6 +56,27 @@ test('زمان آزمون: فقط عدد مثبت', () => {
   const ok = validateExamInput({ ...valid, durationMinutes: '۴۵' });
   assert.equal(ok.ok, true);
   assert.equal(ok.values.durationMinutes, 45);
+
+  for (const empty of ['', '   ', null, undefined]) {
+    const untimed = validateExamInput({ ...valid, durationMinutes: empty });
+    assert.equal(untimed.ok, true, `خالی یعنی بدون زمان: ${String(empty)}`);
+    assert.equal(untimed.values.durationMinutes, null);
+  }
+});
+
+test('آزمون بدون زمان: هرگز با گذر زمان منقضی نمی‌شود و تا پایان دستی باز می‌ماند', () => {
+  const exam = createExam({ ...valid, durationMinutes: '' }, T0);
+  assert.equal(exam.durationMinutes, null);
+  assert.equal(isTimed(exam), false);
+  assert.equal(isTimed(createExam(valid, T0)), true);
+
+  const running = { ...exam, status: STATUS.IN_PROGRESS, startedAt: T0 };
+  assert.equal(currentPhase(running, T0 + 1000), 'running');
+  assert.equal(canAnswer(running, T0 + 1000), true);
+  // حتی بعد از ساعت‌ها بدون تایمر منقضی نمی‌شود
+  assert.equal(currentPhase(running, T0 + 100 * 3600_000), 'running');
+  assert.equal(canAnswer(running, T0 + 100 * 3600_000), true);
+  assert.equal(isLocked(running, T0 + 100 * 3600_000), false);
 });
 
 test('دسته‌بندی باید از فهرست معتبر باشد و «سایر» هم هست', () => {

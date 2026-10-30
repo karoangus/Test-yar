@@ -43,8 +43,9 @@ export function formatPercent(rawValue) {
   return `${toFa(String(cleaned))}٪`;
 }
 
-/** قالب‌بندی زمان به صورت mm:ss با ارقام فارسی */
+/** قالب‌بندی زمان به صورت mm:ss با ارقام فارسی (یا «بدون زمان» برای آزمون‌های بدون تایمر) */
 export function formatClock(totalSeconds) {
+  if (totalSeconds == null || !Number.isFinite(Number(totalSeconds))) return 'بدون زمان';
   const s = Math.max(0, Math.floor(totalSeconds));
   const mm = String(Math.floor(s / 60)).padStart(2, '0');
   const ss = String(s % 60).padStart(2, '0');
@@ -53,9 +54,11 @@ export function formatClock(totalSeconds) {
 
 /**
  * قالب‌بندی مدت‌زمان بر حسب دقیقه به متن خوانا.
+ * اگر زمان خالی (`null`/`undefined`/`''`) باشد یعنی آزمون بدون محدودیت زمان است.
  * ابتدا کل دقیقه‌ها گرد می‌شوند تا هرگز «۶۰ دقیقه» یا «۱ ساعت و ۶۰ دقیقه» دیده نشود.
  */
 export function formatDuration(minutes) {
+  if (minutes == null || String(minutes).trim() === '') return 'بدون زمان';
   const total = Number(minutes);
   if (!Number.isFinite(total) || total <= 0) return '—';
   const totalMinutes = Math.round(total);

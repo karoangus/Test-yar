@@ -14,7 +14,7 @@ import {
   toFa,
 } from '../../core/format.js';
 import { optionLabel, QUESTION_STATUS } from '../../core/scoring.js';
-import { startNumberOf } from '../../core/model.js';
+import { startNumberOf, isTimed } from '../../core/model.js';
 import { formatRange } from '../../core/format.js';
 
 const REVIEW_FILTERS = [
@@ -93,22 +93,28 @@ export function resultView({ rootEl, store, navigate, exam }) {
       .filter((q) => q.status === QUESTION_STATUS.UNANSWERED)
       .map((q) => h('span', { class: 'nav-chip chip-unanswered' }, formatNumber(start + q.index)));
 
-    const durationMs = Number(current.result.durationMinutes ?? current.durationMinutes) * 60_000;
+    const timed = isTimed(current);
+    const durationMs = timed ? Number(current.result.durationMinutes ?? current.durationMinutes) * 60_000 : 0;
     const activeMs = Number.isFinite(current.result.activeElapsedMs)
       ? current.result.activeElapsedMs
       : current.endedAt != null && current.startedAt != null
         ? Math.max(0, current.endedAt - current.startedAt)
         : durationMs;
 
-    const timeRows = [
-      ['زمان کل آزمون', formatDuration(current.result.durationMinutes ?? current.durationMinutes)],
-      ['زمان فعال پاسخ‌گویی', formatSeconds(activeMs / 1000)],
-      [
-        'مجموع توقف تایمر',
-        current.result.pausedTotalMs > 0 ? formatSeconds(current.result.pausedTotalMs / 1000) : 'بدون توقف',
-      ],
-      ['تعداد توقف‌ها', formatNumber(current.result.pauseCount ?? 0)],
-    ];
+    const timeRows = timed
+      ? [
+          ['زمان کل آزمون', formatDuration(current.result.durationMinutes ?? current.durationMinutes)],
+          ['زمان فعال پاسخ‌گویی', formatSeconds(activeMs / 1000)],
+          [
+            'مجموع توقف تایمر',
+            current.result.pausedTotalMs > 0 ? formatSeconds(current.result.pausedTotalMs / 1000) : 'بدون توقف',
+          ],
+          ['تعداد توقف‌ها', formatNumber(current.result.pauseCount ?? 0)],
+        ]
+      : [
+          ['زمان کل آزمون', formatDuration(null)],
+          ['زمان فعال پاسخ‌گویی', formatSeconds(activeMs / 1000)],
+        ];
 
     const reviewList = h('ul', { class: 'review-list' }, reviewRows);
     const emptyReview = h('p', { class: 'hint', hidden: filter === 'all' }, 'موردی در این دسته نیست.');
@@ -243,7 +249,9 @@ export function resultView({ rootEl, store, navigate, exam }) {
       `درصد با نمره منفی: ${formatPercent(result.percentWithNegative)} — بدون نمره منفی: ${formatPercent(result.percentWithoutNegative)}`,
       `نمره (از ۲۰): ${formatScoreOutOf20(result.percentWithNegative)}`,
       `زمان کل: ${formatDuration(current.result.durationMinutes ?? current.durationMinutes)} — زمان فعال: ${formatSeconds(activeMs / 1000)}`,
-      `مجموع توقف تایمر: ${current.result.pausedTotalMs > 0 ? formatSeconds(current.result.pausedTotalMs / 1000) : 'بدون توقف'}`,
+      ...(timed
+        ? [`مجموع توقف تایمر: ${current.result.pausedTotalMs > 0 ? formatSeconds(current.result.pausedTotalMs / 1000) : 'بدون توقف'}`]
+        : []),
     ].join('\n');
 
     const actions = h(

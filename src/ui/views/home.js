@@ -12,7 +12,7 @@ import {
   formatRange,
   formatAnswerCount,
 } from '../../core/format.js';
-import { STATUS, PHASE, currentPhase, startNumberOf, isAutoGradeReady } from '../../core/model.js';
+import { STATUS, PHASE, currentPhase, startNumberOf, isAutoGradeReady, isTimed } from '../../core/model.js';
 import { remainingSeconds, pauseDurationMs } from '../../core/timer.js';
 import { canInstall, onInstallAvailable, promptInstall } from '../pwa.js';
 import { toggleTheme, getResolvedTheme, onThemeChange } from '../theme.js';
@@ -191,6 +191,10 @@ export function homeView({ rootEl, store, navigate }) {
     for (const el of container.querySelectorAll('[data-remaining]')) {
       const exam = store.get(el.dataset.remaining ?? '');
       if (!exam) continue;
+      if (!isTimed(exam)) {
+        el.textContent = 'بدون زمان';
+        continue;
+      }
       const phase = currentPhase(exam, now);
       el.textContent =
         phase === PHASE.RUNNING
@@ -204,6 +208,11 @@ export function homeView({ rootEl, store, navigate }) {
     if (!live) return;
     const exam = store.get(live.dataset.examId ?? '');
     if (!exam) return;
+    if (!isTimed(exam)) {
+      live.textContent = 'بدون زمان';
+      live.classList.remove('timer-paused', 'timer-locked');
+      return;
+    }
     const phase = currentPhase(exam, now);
     if (phase === PHASE.EXPIRED) {
       live.textContent = 'زمان تمام شد';
@@ -234,6 +243,7 @@ export function homeView({ rootEl, store, navigate }) {
     const phase = currentPhase(exam, Date.now());
     const answered = Object.keys(exam.answers).length;
     const paused = phase === PHASE.PAUSED;
+    const timed = isTimed(exam);
     return h(
       'section',
       { class: `card running-hero${paused ? ' is-paused' : ''}` },
@@ -254,8 +264,12 @@ export function homeView({ rootEl, store, navigate }) {
         h(
           'div',
           { class: 'running-hero-side' },
-          h('span', { class: 'sheet-timer', dataset: { liveTimer: '1', examId: exam.id } }, '⏱ --:--'),
-          h('span', { class: 'running-hero-side-label' }, 'زمان باقی‌مانده'),
+          h(
+            'span',
+            { class: 'sheet-timer', dataset: { liveTimer: '1', examId: exam.id } },
+            timed ? '⏱ --:--' : 'بدون زمان',
+          ),
+          h('span', { class: 'running-hero-side-label' }, timed ? 'زمان باقی‌مانده' : 'پایان دستی'),
         ),
       ),
       h('p', { class: 'running-hero-note', dataset: { pauseNote: '1' }, hidden: true }),
@@ -267,31 +281,33 @@ export function homeView({ rootEl, store, navigate }) {
           { class: 'btn btn-primary', onClick: () => navigate(`/exam/${exam.id}`) },
           paused ? 'بازگشت به آزمون' : 'ادامهٔ آزمون',
         ),
-        paused
-          ? h(
-              'button',
-              {
-                class: 'btn btn-ghost',
-                onClick: () => {
-                  store.resumeExam(exam.id);
-                  toast('تایمر آزمون از سر گرفته شد.', 'success');
+        timed
+          ? paused
+            ? h(
+                'button',
+                {
+                  class: 'btn btn-ghost',
+                  onClick: () => {
+                    store.resumeExam(exam.id);
+                    toast('تایمر آزمون از سر گرفته شد.', 'success');
+                  },
                 },
-              },
-              icon('play', 16),
-              ' ادامهٔ تایمر',
-            )
-          : h(
-              'button',
-              {
-                class: 'btn btn-ghost',
-                onClick: () => {
-                  store.pauseExam(exam.id);
-                  toast('تایمر آزمون متوقف شد.', 'info');
+                icon('play', 16),
+                ' ادامهٔ تایمر',
+              )
+            : h(
+                'button',
+                {
+                  class: 'btn btn-ghost',
+                  onClick: () => {
+                    store.pauseExam(exam.id);
+                    toast('تایمر آزمون متوقف شد.', 'info');
+                  },
                 },
-              },
-              icon('pause', 16),
-              ' توقف تایمر',
-            ),
+                icon('pause', 16),
+                ' توقف تایمر',
+              )
+          : null,
       ),
     );
   }

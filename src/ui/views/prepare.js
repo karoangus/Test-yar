@@ -10,6 +10,7 @@ import {
   startNumberOf,
   hasCompleteKey,
   isAutoGradeReady,
+  isTimed,
   MAX_START_NUMBER,
 } from '../../core/model.js';
 import { DomainError } from '../../core/store.js';
@@ -27,6 +28,7 @@ export function prepareView({ rootEl, store, navigate, exam }) {
     const infoRow = (label, value) =>
       h('div', { class: 'info-row' }, h('span', { class: 'info-label' }, label), h('strong', null, value));
 
+    const timed = isTimed(current);
     const startBtn = h(
       'button',
       {
@@ -34,8 +36,9 @@ export function prepareView({ rootEl, store, navigate, exam }) {
         onClick: async () => {
           const ok = await confirmDialog({
             title: 'آماده‌ای؟',
-            message:
-              'با شروع آزمون تایمر بلافاصله آغاز می‌شود. در صورت نیاز می‌توانید وسط آزمون تایمر را متوقف کنید و بعد ادامه دهید؛ زمان توقف از وقت آزمون کم نمی‌شود.',
+            message: timed
+              ? 'با شروع آزمون تایمر بلافاصله آغاز می‌شود. در صورت نیاز می‌توانید وسط آزمون تایمر را متوقف کنید و بعد ادامه دهید؛ زمان توقف از وقت آزمون کم نمی‌شود.'
+              : 'این آزمون بدون محدودیت زمانی است و تایمر ندارد؛ هر زمان که خودتان دکمهٔ «پایان آزمون» را بزنید آزمون تمام می‌شود.',
             confirmLabel: 'شروع آزمون',
             cancelLabel: 'هنوز نه',
           });
@@ -63,13 +66,22 @@ export function prepareView({ rootEl, store, navigate, exam }) {
         infoRow('شمارهٔ سوال‌ها', `${formatRange(startNumberOf(current), current.questionCount)}`),
         infoRow('زمان آزمون', formatDuration(current.durationMinutes)),
         infoRow('گزینه‌ها', OPTIONS.map((o) => o.label).join(' · ')),
-        infoRow('توقف تایمر', 'فعال — زمان در حین توقف مصرف نمی‌شود'),
+        infoRow(
+          'توقف تایمر',
+          timed ? 'فعال — زمان در حین توقف مصرف نمی‌شود' : 'ندارد — آزمون بدون تایمر است و با پایان دستی تمام می‌شود',
+        ),
         infoRow(
           'تصحیح',
           autoGrade ? 'خودکار · کلید آزمون قبلی' : current.keyOrigin ? 'دستی · کلید ناقص' : 'دستی · ورود کلید پس از پایان',
         ),
       ),
-      h('p', { class: 'hint' }, 'تا زمانی که دکمهٔ «شروع آزمون» را نزنید، تایمر آغاز نمی‌شود.'),
+      h(
+        'p',
+        { class: 'hint' },
+        timed
+          ? 'تا زمانی که دکمهٔ «شروع آزمون» را نزنید، تایمر آغاز نمی‌شود.'
+          : 'این آزمون بدون محدودیت زمانی است؛ هر زمان آماده بودید شروع کنید و هر وقت خواستید آزمون را تمام کنید.',
+      ),
       startBtn,
       h(
         'button',

@@ -2,7 +2,9 @@
 
 import { normalizeDigits } from './format.js';
 import { findMissingKeys } from './scoring.js';
-import { isExpired, isPaused } from './timer.js';
+import { isExpired, isPaused, isTimed } from './timer.js';
+
+export { isTimed };
 
 export const CATEGORIES = Object.freeze([
   'عربی',
@@ -103,6 +105,22 @@ function validateStartNumber(raw) {
 }
 
 /**
+ * اعتبارسنجی «زمان آزمون».
+ * خالی بودن یعنی آزمون بدون محدودیت زمانی است (`null`) و هر زمان کاربر خودش آزمون را تمام کرد به پایان می‌رسد.
+ */
+function validateDuration(raw) {
+  if (raw == null || String(raw).trim() === '') return { value: null };
+  const durationMinutes = toPositiveNumber(raw);
+  if (!Number.isFinite(durationMinutes)) {
+    return { error: 'زمان آزمون باید عددی بزرگ‌تر از صفر باشد.' };
+  }
+  if (durationMinutes > MAX_DURATION_MINUTES) {
+    return { error: `زمان آزمون حداکثر ${MAX_DURATION_MINUTES} دقیقه است.` };
+  }
+  return { value: durationMinutes };
+}
+
+/**
  * اعتبارسنجی ورودی ساخت آزمون.
  * خروجی: { ok, values?, errors: { name?, questionCount?, duration?, category?, startNumber? } }
  */
@@ -119,12 +137,8 @@ export function validateExamInput(input) {
     errors.questionCount = `تعداد سوالات حداکثر ${MAX_QUESTIONS} است.`;
   }
 
-  const durationMinutes = toPositiveNumber(input?.durationMinutes);
-  if (!Number.isFinite(durationMinutes)) {
-    errors.duration = 'زمان آزمون باید عددی بزرگ‌تر از صفر باشد.';
-  } else if (durationMinutes > MAX_DURATION_MINUTES) {
-    errors.duration = `زمان آزمون حداکثر ${MAX_DURATION_MINUTES} دقیقه است.`;
-  }
+  const durationCheck = validateDuration(input?.durationMinutes);
+  if (durationCheck.error) errors.duration = durationCheck.error;
 
   const category = String(input?.category ?? '');
   if (!CATEGORIES.includes(category)) {
@@ -137,7 +151,13 @@ export function validateExamInput(input) {
   if (Object.keys(errors).length > 0) return { ok: false, errors };
   return {
     ok: true,
-    values: { name: nameCheck.value, questionCount, durationMinutes, category, startNumber: startCheck.value },
+    values: {
+      name: nameCheck.value,
+      questionCount,
+      durationMinutes: durationCheck.value,
+      category,
+      startNumber: startCheck.value,
+    },
   };
 }
 
