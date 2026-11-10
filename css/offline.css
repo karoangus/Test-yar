@@ -1,0 +1,8 @@
+.offline-banner { background:#9a3412; color:white; padding:.65rem 1rem; text-align:center; }
+.offline-settings { max-width: 900px; margin: 1rem auto 6rem; padding: 0 1rem; }
+.offline-settings details { border:1px solid #8888; border-radius:16px; padding:1rem; background:var(--surface, transparent); }
+.offline-settings summary { cursor:pointer; font-weight:bold; }
+.offline-settings p { margin:.75rem 0; line-height:1.9; }
+.offline-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
+.offline-badge { background:#9a3412; color:white; border-radius:1rem; padding:.25rem .6rem; font-size:.8rem; }
+html.lp-perf *, html.lp-perf *::before, html.lp-perf *::after { backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }

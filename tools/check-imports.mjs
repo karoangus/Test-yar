@@ -30,11 +30,12 @@ function checkModule(file) {
 
 // ماژول‌ها از نقطهٔ ورود
 checkModule('src/main.js');
+checkModule('js/offline.js');
 
 // فایل‌های مرجع‌دهی‌شده در index.html
 const html = readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 for (const m of html.matchAll(/(?:href|src)="\.?\/?([^"]+)"/g)) {
-  const ref = m[1];
+  const ref = m[1].split(/[?#]/)[0];
   if (ref.startsWith('#') || ref.startsWith('http')) continue;
   if (!existsSync(path.join(ROOT, ref))) problems.push(`مرجع شکسته در index.html: ${ref}`);
 }
