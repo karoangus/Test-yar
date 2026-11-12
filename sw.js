@@ -1,5 +1,5 @@
 /* تست‌یار: پوستهٔ کامل آفلاین، مستقل از مسیر نصب */
-const LP_APP_VERSION = '4.1.0';
+const LP_APP_VERSION = '4.1.1';
 const CACHE_NAME = `testyar-v${LP_APP_VERSION}`;
 const SHELL = [
   './', './index.html', './offline.html', './app-version.json',
@@ -34,16 +34,37 @@ self.addEventListener('activate', event => {
     await self.clients.claim();
   })());
 });
+async function missingShell(cache) {
+  const missing = [];
+  for (const url of SHELL) if (!await cache.match(url)) missing.push(url);
+  return missing;
+}
+
 self.addEventListener('message', event => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
-  if (event.data?.type === 'OFFLINE_STATUS' && event.ports[0]) {
-    event.waitUntil((async () => {
+  if (!['OFFLINE_STATUS', 'OFFLINE_REPAIR'].includes(event.data?.type) || !event.ports[0]) return;
+  event.waitUntil((async () => {
+    try {
       const cache = await caches.open(CACHE_NAME);
-      const missing = [];
-      for (const url of SHELL) if (!await cache.match(url)) missing.push(url);
+      let missing = await missingShell(cache);
+      if (event.data.type === 'OFFLINE_REPAIR' && missing.length) {
+        // Never mix an old shell with files from a newer deployment.
+        const response = await fetch(new Request('./app-version.json', { cache: 'reload' }));
+        if (!response.ok) throw new Error('network');
+        const published = await response.json();
+        if (published.version !== LP_APP_VERSION || event.data.version !== LP_APP_VERSION) {
+          event.ports[0].postMessage({ version: LP_APP_VERSION, missing, error: 'version' });
+          return;
+        }
+        // addAll is atomic: a failed download leaves the existing cache untouched.
+        await cache.addAll(missing.map(url => new Request(url, { cache: 'reload' })));
+        missing = await missingShell(cache);
+      }
       event.ports[0].postMessage({ version: LP_APP_VERSION, missing });
-    })());
-  }
+    } catch {
+      event.ports[0].postMessage({ version: LP_APP_VERSION, error: 'repair_failed' });
+    }
+  })());
 });
 self.addEventListener('fetch', event => {
   const { request } = event;

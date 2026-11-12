@@ -7,20 +7,24 @@ function worker() {
   const handlers = {}, entries = new Map();
   const base = 'https://example.test/project/';
   const key = value => new URL(typeof value === 'string' ? value : value.url, base).href;
+  let fetches = 0, online = true, version = '4.1.1', failAdd = false;
   const cache = {
-    async addAll(requests) { for (const r of requests) { assert.equal(r.cache, 'reload'); entries.set(key(r), new Response('cached:' + key(r))); } },
+    async addAll(requests) {
+      for (const r of requests) assert.equal(r.cache, 'reload');
+      if (failAdd || !online) throw Error('download failed');
+      for (const r of requests) entries.set(key(r), new Response('cached:' + key(r)));
+    },
     async match(req) { return entries.get(key(req))?.clone(); },
     async put(req, response) { entries.set(key(req), response); },
   };
-  let fetches = 0, online = true;
   const context = {
     URL, Response, Request: class { constructor(url, options) { this.url = key(url); this.cache = options.cache; } },
     self: { location: new URL(base), addEventListener(type, fn) { handlers[type] = fn; }, skipWaiting: async () => {}, clients: { claim: async () => {} } },
     caches: { open: async () => cache, keys: async () => [], delete: async () => {} },
-    fetch: async () => { fetches++; if (!online) throw Error('offline'); return new Response('network'); },
+    fetch: async req => { fetches++; if (!online) throw Error('offline'); if (key(req).endsWith('/app-version.json')) return Response.json({ version }); return new Response('network'); },
   };
   vm.runInNewContext(readFileSync('sw.js', 'utf8'), context);
-  return { handlers, entries, key, setOnline: v => { online = v; }, fetches: () => fetches };
+  return { handlers, entries, key, setOnline: v => { online = v; }, setVersion: v => { version = v; }, setFailAdd: v => { failAdd = v; }, fetches: () => fetches };
 }
 async function event(handlers, name, obj = {}) { let promise; handlers[name]({ ...obj, waitUntil: p => { promise = p; }, respondWith: p => { promise = p; } }); return promise; }
 
@@ -31,7 +35,7 @@ test('precache covers files, uses reload, and offline fetch works under a subpat
     assert.ok(existsSync(p), `missing ${p}`);
   }
   w.setOnline(false);
-  for (const file of ['','src/main.js?v=4.1.0','src/ui/views/history.js','assets/icons/icon-192.png','offline.html']) {
+  for (const file of ['','src/main.js?v=4.1.1','src/ui/views/history.js','assets/icons/icon-192.png','offline.html']) {
     const response = await event(w.handlers, 'fetch', { request: { method:'GET', url: w.key(file), mode: file === '' ? 'navigate' : 'same-origin' } });
     assert.equal(response.ok, true, file);
   }
@@ -42,7 +46,7 @@ test('precache covers files, uses reload, and offline fetch works under a subpat
 test('network-first code, cache-first icons and status detects missing files', async () => {
   const w = worker(); await event(w.handlers, 'install');
   const request = file => ({ method:'GET', url:w.key(file), mode:'same-origin' });
-  assert.equal(await (await event(w.handlers, 'fetch', { request:request('src/main.js?v=4.1.0') })).text(), 'network');
+  assert.equal(await (await event(w.handlers, 'fetch', { request:request('src/main.js?v=4.1.1') })).text(), 'network');
   const count = w.fetches();
   await event(w.handlers, 'fetch', { request:request('assets/icons/icon-192.png') });
   assert.equal(w.fetches(), count);
@@ -70,4 +74,43 @@ test('shell includes every static module dependency and index reference', async 
     }
   }
   modules('src/main.js'); modules('js/offline.js');
+});
+
+async function message(w, type, version = '4.1.1') {
+  let result;
+  await event(w.handlers, 'message', { data: { type, version }, ports: [{ postMessage: value => { result = value; } }] });
+  return result;
+}
+
+test('repair fills missing files without deleting cached shell', async () => {
+  const w = worker(); await event(w.handlers, 'install');
+  w.entries.delete(w.key('offline.html'));
+  const original = await w.entries.get(w.key('src/core/store.js')).clone().text();
+  assert.ok((await message(w, 'OFFLINE_STATUS')).missing.includes('./offline.html'));
+  const result = await message(w, 'OFFLINE_REPAIR');
+  assert.equal(result.missing.length, 0);
+  assert.equal(await w.entries.get(w.key('src/core/store.js')).clone().text(), original);
+});
+
+test('repair fails safely offline or on download failure, and succeeds on retry', async () => {
+  const w = worker(); await event(w.handlers, 'install');
+  w.entries.delete(w.key('offline.html'));
+  w.setOnline(false);
+  assert.equal((await message(w, 'OFFLINE_REPAIR')).error, 'repair_failed');
+  assert.ok((await message(w, 'OFFLINE_STATUS')).missing.includes('./offline.html'));
+  w.setOnline(true); w.setFailAdd(true);
+  assert.equal((await message(w, 'OFFLINE_REPAIR')).error, 'repair_failed');
+  assert.ok((await message(w, 'OFFLINE_STATUS')).missing.includes('./offline.html'));
+  w.setFailAdd(false);
+  assert.equal((await message(w, 'OFFLINE_REPAIR')).missing.length, 0);
+});
+
+test('repair refuses mismatched server or client versions', async () => {
+  const w = worker(); await event(w.handlers, 'install');
+  w.entries.delete(w.key('offline.html'));
+  w.setVersion('4.2.0');
+  assert.equal((await message(w, 'OFFLINE_REPAIR')).error, 'version');
+  w.setVersion('4.1.1');
+  assert.equal((await message(w, 'OFFLINE_REPAIR', '4.1.0')).error, 'version');
+  assert.ok((await message(w, 'OFFLINE_STATUS')).missing.includes('./offline.html'));
 });

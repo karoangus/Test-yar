@@ -1,7 +1,7 @@
 import { canInstall, onInstallAvailable, promptInstall } from '../src/ui/pwa.js';
 import { toast } from '../src/ui/components.js';
 
-const LP_APP_VERSION = '4.1.0';
+const LP_APP_VERSION = '4.1.1';
 window.LP_APP_VERSION = LP_APP_VERSION;
 const en = document.documentElement.lang.startsWith('en');
 const t = (fa, english) => en ? english : fa;
@@ -45,46 +45,69 @@ async function persistence(request = false) {
     : t('حافظهٔ پایدار تأیید نشده است؛ مرورگر ممکن است داده‌ها را پاک کند.','Persistent storage not granted; the browser may remove data.');
   return persistent;
 }
-async function status() {
-  if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) throw Error('no controller');
+async function workerMessage(type, timeout = 5000) {
+  if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) throw Error('no_controller');
   return new Promise((resolve, reject) => {
     const channel = new MessageChannel();
-    const timer = setTimeout(() => { channel.port1.close(); reject(Error('timeout')); }, 5000);
+    const timer = setTimeout(() => { channel.port1.close(); reject(Error('timeout')); }, timeout);
     channel.port1.onmessage = e => { clearTimeout(timer); channel.port1.close(); resolve(e.data); };
-    navigator.serviceWorker.controller.postMessage({ type:'OFFLINE_STATUS' }, [channel.port2]);
+    try {
+      navigator.serviceWorker.controller.postMessage({ type, version: LP_APP_VERSION }, [channel.port2]);
+    } catch (err) { clearTimeout(timer); channel.port1.close(); reject(err); }
   });
 }
-async function check() {
-  const result = await status();
-  return result.version === LP_APP_VERSION && Array.isArray(result.missing) && result.missing.length === 0;
+function validate(result) {
+  if (!result || result.error === 'version' || result.version !== LP_APP_VERSION) throw Error('version');
+  if (result.error || !Array.isArray(result.missing)) throw Error('repair_failed');
+  return result.missing;
+}
+function reportError(error) {
+  const message = error.message === 'version'
+    ? t('نسخهٔ صفحه و سرویس آفلاین متفاوت است. با اینترنت متصل برنامه را ببندید و دوباره باز کنید.', 'Page and offline service versions differ. Close and reopen the app while online.')
+    : error.message === 'incomplete'
+      ? t('کش هنوز ناقص است. اتصال اینترنت و فضای خالی دستگاه را بررسی و دوباره تلاش کنید.', 'The cache is still incomplete. Check your connection and free space, then retry.')
+      : t('آماده‌سازی آفلاین کامل نشد. اتصال به سایت و فضای خالی دستگاه را بررسی و دوباره تلاش کنید.', 'Offline preparation failed. Check access to the site and free device space, then retry.');
+  toast(message, 'error');
 }
 window.lpEnsureOfflineReady = async () => {
-  await persistence(true);
+  const button = document.getElementById('save-offline');
+  if (button.disabled) return false;
+  button.disabled = true;
   try {
+    await persistence(true);
     if (!('serviceWorker' in navigator)) throw Error('unsupported');
-    const registration = await navigator.serviceWorker.register('./sw.js');
-    if (navigator.onLine) await registration.update().catch(() => {});
-    await Promise.race([navigator.serviceWorker.ready, new Promise((_, reject) => setTimeout(() => reject(Error('timeout')), 10000))]);
+    // Register without resetting the existing cache or the user's data.
+    await navigator.serviceWorker.register('./sw.js');
+    let readyTimer;
+    try {
+      await Promise.race([navigator.serviceWorker.ready, new Promise((_, reject) => { readyTimer = setTimeout(() => reject(Error('timeout')), 10000); })]);
+    } finally { clearTimeout(readyTimer); }
     if (!navigator.serviceWorker.controller) await new Promise((resolve, reject) => {
       const timer = setTimeout(() => { navigator.serviceWorker.removeEventListener('controllerchange', changed); reject(Error('timeout')); }, 10000);
       function changed() { clearTimeout(timer); navigator.serviceWorker.removeEventListener('controllerchange', changed); resolve(); }
       navigator.serviceWorker.addEventListener('controllerchange', changed);
       if (navigator.serviceWorker.controller) changed();
     });
-    if (!await check()) throw Error('incomplete');
+    let missing = validate(await workerMessage('OFFLINE_STATUS'));
+    if (missing.length) missing = validate(await workerMessage('OFFLINE_REPAIR', 60000));
+    if (missing.length) throw Error('incomplete');
     toast(t('فایل‌های آفلاین آماده‌اند. برای اطمینان اینترنت را قطع و برنامه را از آیکون باز کنید.','Offline files are ready. Disconnect and reopen from the icon to verify.'), 'success');
     return true;
-  } catch {
-    toast(t('آماده‌سازی کامل نشد؛ اتصال و پشتیبانی مرورگر را بررسی و دوباره تلاش کنید.','Preparation failed; check your connection and browser support, then retry.'), 'error');
+  } catch (error) {
+    reportError(error);
     return false;
-  }
+  } finally { button.disabled = false; }
 };
 document.getElementById('save-offline').onclick = window.lpEnsureOfflineReady;
 document.getElementById('test-offline').onclick = async () => {
   try {
-    const ok = await check();
-    toast(ok ? t('فایل‌های لازم در کش هستند؛ آزمون واقعی: اینترنت را قطع و از آیکون باز کنید.','Required files are cached; for a real test disconnect and reopen from the icon.') : t('کش ناقص یا نسخه ناسازگار است؛ ذخیره آفلاین را دوباره بزنید.','Cache incomplete or version mismatch; save offline again.'), ok ? 'success' : 'error');
-  } catch { toast(t('سرویس آفلاین فعال نیست؛ ابتدا ذخیره آفلاین را بزنید.','Offline service is not active; save offline first.'), 'error'); }
+    const missing = validate(await workerMessage('OFFLINE_STATUS'));
+    if (missing.length) {
+      toast(t('فایل‌های آفلاین ناقص‌اند؛ با اینترنت متصل «ذخیره آفلاین» را بزنید.', 'Offline files are missing; connect and select Save offline.'), 'error');
+      return;
+    }
+    toast(t('فایل‌های لازم در کش هستند؛ آزمون واقعی: اینترنت را قطع و از آیکون باز کنید.','Required files are cached; for a real test disconnect and reopen from the icon.'), 'success');
+  } catch (error) { reportError(error); }
 };
 const install = document.getElementById('install-offline');
 function updateInstall() { install.hidden = standalone(); }
