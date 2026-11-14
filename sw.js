@@ -1,6 +1,8 @@
 /* تست‌یار: پوستهٔ کامل آفلاین، مستقل از مسیر نصب */
-const LP_APP_VERSION = '4.1.1';
+const LP_APP_VERSION = '4.1.2';
 const CACHE_NAME = `testyar-v${LP_APP_VERSION}`;
+const RUNTIME_CACHE = `${CACHE_NAME}-runtime`;
+const NETWORK_TIMEOUT_MS = 4000;
 const SHELL = [
   './', './index.html', './offline.html', './app-version.json',
   `./manifest.webmanifest?v=${LP_APP_VERSION}`, './manifest.webmanifest',
@@ -30,7 +32,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter(key => key.startsWith('testyar-v') && key !== CACHE_NAME).map(key => caches.delete(key)));
+    await Promise.all(keys.filter(key => key.startsWith('testyar-v') && key !== CACHE_NAME && key !== RUNTIME_CACHE).map(key => caches.delete(key)));
     await self.clients.claim();
   })());
 });
@@ -72,21 +74,29 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   const navigation = request.mode === 'navigate';
-  const networkFirst = navigation || /\.(?:html|css|js|mjs|json|webmanifest)$/i.test(url.pathname);
+  const isHtml = navigation || /\.html$/i.test(url.pathname);
+  const networkFirst = isHtml || /\.(?:css|js|mjs|json|webmanifest)$/i.test(url.pathname);
   event.respondWith((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    const cached = () => cache.match(request);
-    const network = async () => {
-      const response = await fetch(request);
-      if (!response.ok) throw new Error('Network response not OK');
-      await cache.put(request, response.clone()).catch(() => {});
-      return response;
+    const shell = await caches.open(CACHE_NAME);
+    const runtime = await caches.open(RUNTIME_CACHE);
+    // Do not overwrite the installed shell with files from a different deployment.
+    const network = async (timeout = false) => {
+      const controller = new AbortController();
+      const timer = timeout ? setTimeout(() => controller.abort(), NETWORK_TIMEOUT_MS) : null;
+      try {
+        const response = await fetch(request, { cache: 'no-store', signal: controller.signal });
+        if (!response.ok) throw new Error('Network response not OK');
+        await runtime.put(request, response.clone()).catch(() => {});
+        return response;
+      } finally { if (timer) clearTimeout(timer); }
     };
     if (networkFirst) {
-      try { return await network(); } catch {
-        return await cached() || (navigation && (await cache.match('./index.html') || await cache.match('./offline.html'))) || Response.error();
+      try { return await network(true); } catch {
+        // A navigation always falls back to the coherent, installed app shell.
+        if (navigation) return await shell.match(request) || await shell.match('./index.html') || await shell.match('./offline.html') || Response.error();
+        return await shell.match(request) || await runtime.match(request) || Response.error();
       }
     }
-    return await cached() || await network().catch(() => Response.error());
+    return await shell.match(request) || await runtime.match(request) || await network().catch(() => Response.error());
   })());
 });

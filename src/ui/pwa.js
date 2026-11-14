@@ -18,14 +18,18 @@ export function onInstallAvailable(cb) {
 
 export async function promptInstall() {
   if (!deferredPrompt) return false;
-  deferredPrompt.prompt();
+  // A prompt can only be used once, including when the user dismisses it.
+  const prompt = deferredPrompt;
+  deferredPrompt = null;
   try {
-    const choice = await deferredPrompt.userChoice;
-    const accepted = choice?.outcome === 'accepted';
-    if (accepted) deferredPrompt = null;
-    return accepted;
+    await prompt.prompt();
+    return (await prompt.userChoice)?.outcome === 'accepted';
   } catch {
     return false;
+  } finally {
+    for (const cb of [...promptListeners]) {
+      try { cb(); } catch { /* ignore */ }
+    }
   }
 }
 
@@ -87,6 +91,9 @@ export function initPwa() {
 
   window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
+    for (const cb of [...promptListeners]) {
+      try { cb(); } catch { /* ignore */ }
+    }
   });
 
   if (!('serviceWorker' in navigator)) return;
